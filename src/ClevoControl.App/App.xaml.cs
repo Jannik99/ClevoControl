@@ -97,7 +97,7 @@ public partial class App : Application
         _window.Left = 10;
         _window.Top = 10;
         var scroll = (System.Windows.Controls.ScrollViewer)_window.FindName("ContentScroll");
-        foreach (var key in new[] { "dashboard", "monitor", "lighting", "games", "fans", "power", "battery", "sound", "keys", "scenes", "system", "settings" })
+        foreach (var key in (Environment.GetEnvironmentVariable("CC_SHOTS") ?? "dashboard,monitor,lighting,games,fans,power,battery,sound,keys,scenes,system,settings").Split(','))
         {
             _window.Navigate(key);
             await Task.Delay(2200);

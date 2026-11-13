@@ -21,8 +21,8 @@ public sealed class DashboardPage(ControlCenter cc) : AppPage(cc)
 
         // Sensor tiles
         var tiles = new UniformGrid4();
-        tiles.Add(SensorTile("CPU", Color.FromRgb(76, 141, 255), s => s.Cpu.TemperatureC, s => $"{s.Cpu.Rpm} RPM · {s.Cpu.DutyPercent}%", "°C"));
-        tiles.Add(SensorTile("GPU", Color.FromRgb(61, 220, 132), s => s.Gpu.TemperatureC, s => $"{s.Gpu.Rpm} RPM · {s.Gpu.DutyPercent}%", "°C"));
+        tiles.Add(SensorTile(Loc.T("CPU-Temperatur", "CPU temperature"), Color.FromRgb(76, 141, 255), s => s.Cpu.TemperatureC, s => Loc.T("Lüfter ", "Fan ") + $"{s.Cpu.Rpm} RPM · {s.Cpu.DutyPercent} %", "°C"));
+        tiles.Add(SensorTile(Loc.T("GPU-Temperatur", "GPU temperature"), Color.FromRgb(61, 220, 132), s => s.Gpu.TemperatureC, s => Loc.T("Lüfter ", "Fan ") + $"{s.Gpu.Rpm} RPM · {s.Gpu.DutyPercent} %", "°C"));
         tiles.Add(SensorTile(Loc.T("CPU-Last", "CPU load"), Color.FromRgb(255, 181, 71), s => s.CpuLoadPercent, _ => Loc.T("alle Kerne", "all cores"), "%"));
         tiles.Add(SensorTile(Loc.T("Arbeitsspeicher", "Memory"), Color.FromRgb(200, 120, 255), s => s.MemoryUsedPercent, s => $"{s.MemoryTotalGb:0} GB", "%"));
         root.Children.Add(tiles);

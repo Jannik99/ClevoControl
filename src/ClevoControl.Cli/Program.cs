@@ -24,6 +24,7 @@ if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
           cooling status|normal|cool|verycool   turbo / CPU limit via the Windows power plan
           charge status                  FlexiCharger state (if the model supports it)
           charge <start> <stop> | charge off
+          gpu [seconds]                  load of all GPUs (NVML + Windows engine counters)
           sysinfo                        model, BIOS, EC, drivers (for bug reports)
           dump                           raw EC buffers (for bug reports)
 
@@ -99,6 +100,19 @@ try
             info = hw.ReadChargeLimit()!;
             Console.WriteLine($"Enabled: {info.Enabled}, start {info.Start} %, stop {info.Stop} %");
             Console.WriteLine($"Allowed start: {string.Join(", ", info.StartOptions)} / stop: {string.Join(", ", info.StopOptions)}");
+            break;
+        }
+        case "gpu":
+        {
+            using var nv = new ClevoControl.Core.Monitoring.GpuMonitor();
+            var eng = new ClevoControl.Core.Monitoring.GpuEngineMonitor();
+            var n = args.Length > 1 ? int.Parse(args[1]) : 1;
+            for (var i = 0; i < n; i++)
+            {
+                Thread.Sleep(1000);
+                if (nv.Sample() is { } s) Console.WriteLine($"{nv.Name}: load {s.LoadPercent:0} %, {s.PowerW:0} W, {s.CoreClockMhz:0} MHz, VRAM {s.VramUsedMb:0}/{s.VramTotalMb:0} MB, P{s.PState}");
+                foreach (var a in eng.Sample()) Console.WriteLine($"  {a.Name}: engines max {a.LoadPercent:0} %  ({string.Join(", ", a.EngineLoad.Where(e => e.Value >= 1).Select(e => $"{e.Key} {e.Value:0} %"))})");
+            }
             break;
         }
         case "sysinfo":
