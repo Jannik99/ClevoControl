@@ -173,10 +173,63 @@ public sealed class FanSettings
     /// <summary>Maximum duty decrease per second (percent points) to avoid fan pumping.</summary>
     public int RampDownPerSecond { get; set; } = 3;
 
+    /// <summary>Each performance profile remembers its own fan mode and curves.</summary>
+    public bool PerProfile { get; set; }
+    public Dictionary<PerformanceProfile, FanProfile> Profiles { get; set; } = [];
+
     public static List<FanCurvePoint> DefaultCurve() =>
     [
         new(40, 20), new(55, 30), new(65, 45), new(75, 65), new(85, 90), new(95, 100),
     ];
+}
+
+public sealed class FanProfile
+{
+    public FanMode Mode { get; set; } = FanMode.Auto;
+    public List<FanCurvePoint> CpuCurve { get; set; } = FanSettings.DefaultCurve();
+    public List<FanCurvePoint> GpuCurve { get; set; } = FanSettings.DefaultCurve();
+}
+
+public enum KeyActionType
+{
+    /// <summary>Sends a key combination, e.g. "Ctrl+Shift+Esc".</summary>
+    Shortcut,
+    /// <summary>Types a text.</summary>
+    Text,
+    /// <summary>Starts a program, file or URL.</summary>
+    Launch,
+    /// <summary>The key does nothing.</summary>
+    Disable,
+}
+
+public sealed class KeyMapping
+{
+    public bool Enabled { get; set; } = true;
+    public int Key { get; set; }
+    public bool Ctrl { get; set; }
+    public bool Alt { get; set; }
+    public bool Shift { get; set; }
+    public bool Win { get; set; }
+    public KeyActionType Action { get; set; } = KeyActionType.Shortcut;
+    public string Value { get; set; } = "";
+
+    public KeyMapping Clone() => (KeyMapping)MemberwiseClone();
+}
+
+public sealed class KeyRemapSettings
+{
+    public bool Enabled { get; set; } = true;
+    public List<KeyMapping> Mappings { get; set; } = [];
+}
+
+public sealed class CoolingSettings
+{
+    public Services.CoolingMode Mode { get; set; } = Services.CoolingMode.Normal;
+    /// <summary>Original Windows values, saved before the first change so "Normal" restores them.</summary>
+    public uint? SavedBoostMode { get; set; }
+    public int? SavedMaxState { get; set; }
+    public bool OverheatWarning { get; set; } = true;
+    public int OverheatThreshold { get; set; } = 95;
 }
 
 public sealed class PowerSettings
@@ -263,6 +316,8 @@ public sealed class AppSettings
     public PowerSettings Power { get; set; } = new();
     public GeneralSettings General { get; set; } = new();
     public GameSettings Games { get; set; } = new();
+    public CoolingSettings Cooling { get; set; } = new();
+    public KeyRemapSettings KeyRemap { get; set; } = new();
     public List<Scene> Scenes { get; set; } = Scene.Defaults();
 }
 

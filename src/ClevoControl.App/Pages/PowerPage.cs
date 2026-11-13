@@ -19,6 +19,36 @@ public sealed class PowerPage(ControlCenter cc) : AppPage(cc)
         _ => p.ToString(),
     };
 
+    private Border CoolingCard()
+    {
+        var c = Cc.Settings.Cooling;
+        var current = Core.Services.CoolingService.Detect();
+        var tiles = new WrapPanel();
+        foreach (var (mode, icon, title, desc) in new[]
+                 {
+                     (Core.Services.CoolingMode.Normal, Icons.Lightning, Loc.T("Normal", "Normal"), Loc.T("Turbo an, volle Leistung", "Turbo on, full power")),
+                     (Core.Services.CoolingMode.Cool, Icons.Thermometer, Loc.T("Kühl", "Cool"), Loc.T("Turbo aus · meist 10–20 °C kühler", "Turbo off · usually 10–20 °C cooler")),
+                     (Core.Services.CoolingMode.VeryCool, Icons.Moon, Loc.T("Sehr kühl", "Very cool"), Loc.T("Turbo aus, max. 80 % Takt", "Turbo off, max. 80 % clock")),
+                 })
+        {
+            var m = mode;
+            tiles.Children.Add(Ui.Tile(icon, title, desc, current == mode, "cooling", () =>
+            {
+                c.Mode = m;
+                if (!Cc.ApplyCooling())
+                    MessageBox.Show(Loc.T("Windows hat die Änderung abgelehnt (evtl. verwaltet eine Richtlinie den Energiesparplan).",
+                        "Windows refused the change (a policy may manage the power plan)."), "ClevoControl");
+            }, 220));
+        }
+        var s = Ui.Stack(tiles,
+            Ui.Text(Loc.T("Für alle, bei denen Undervolting im BIOS gesperrt ist: Diese Modi ändern nur den Windows-Energiesparplan (Turbo-Boost und maximaler Prozessorzustand) – ohne Treiber, jederzeit umkehrbar. „Normal“ stellt deine ursprünglichen Werte wieder her.",
+                "For everyone whose BIOS locks undervolting: these modes only change the Windows power plan (turbo boost and maximum processor state) – no driver needed, reversible any time. “Normal” restores your original values."), 12, sub: true, bottom: 12),
+            Ui.Switch(Loc.T("Hitzewarnung", "Overheat warning"), c.OverheatWarning, v => { c.OverheatWarning = v; Cc.Store.SaveSoon(); },
+                Loc.T("Meldung im Infobereich, wenn CPU oder GPU zu heiß werden (höchstens alle 5 Minuten)", "Notification in the tray when CPU or GPU get too hot (at most every 5 minutes)")),
+            Ui.SliderRow(Loc.T("Warnen ab", "Warn from"), 75, 105, c.OverheatThreshold, v => { c.OverheatThreshold = (int)v; Cc.Store.SaveSoon(); }, v => $"{v:0} °C"));
+        return Ui.Card(s, Loc.T("Kühl-Modus", "Cooling mode"), icon: Icons.Thermometer);
+    }
+
     public override UIElement Build()
     {
         var root = new StackPanel();
@@ -41,6 +71,7 @@ public sealed class PowerPage(ControlCenter cc) : AppPage(cc)
         var profileStack = Ui.Stack(profiles, Ui.Switch(Loc.T("Windows-Energiemodus mitschalten", "Switch Windows power mode too"), P.SyncWindowsPowerMode,
             v => { P.SyncWindowsPowerMode = v; Cc.ApplyPower(); }, Loc.T("Leise/Stromsparen → Beste Energieeffizienz, Performance → Beste Leistung", "Quiet/power saving → best efficiency, performance → best performance")));
         root.Children.Add(Ui.Card(profileStack, Loc.T("Leistungsprofil", "Performance profile")));
+        root.Children.Add(CoolingCard());
 
         var auto = new StackPanel();
         auto.Children.Add(Ui.Switch(Loc.T("Automatisch umschalten", "Switch automatically"), P.AutoSwitch, v => { P.AutoSwitch = v; Cc.ApplyPower(); },

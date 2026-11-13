@@ -30,14 +30,16 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        _mutex = new Mutex(true, MutexName, out var first);
+        // Screenshot runs (developer tool) may run next to an installed instance.
+        var isScreenshotRun = e.Args.Contains("--screenshots");
+        _mutex = new Mutex(true, isScreenshotRun ? MutexName + ".Screenshots" : MutexName, out var first);
         if (!first)
         {
             try { EventWaitHandle.OpenExisting(ShowEventName).Set(); } catch { }
             Shutdown();
             return;
         }
-        _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
+        _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, isScreenshotRun ? ShowEventName + ".Screenshots" : ShowEventName);
         new Thread(() =>
         {
             while (_showEvent.WaitOne()) Dispatcher.BeginInvoke(ShowWindow);
@@ -58,6 +60,8 @@ public partial class App : Application
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
         _window = new MainWindow(_cc);
+        _cc.Overheat += msg => Dispatcher.BeginInvoke(() => _tray?.ShowBalloonTip(5000, Loc.T("ClevoControl – zu heiß!", "ClevoControl – too hot!"),
+            msg + Loc.T(". Tipp: Kühl-Modus unter „Leistung“ oder Lüfter auf Maximum.", ". Tip: cooling mode under “Performance” or fans to maximum."), Forms.ToolTipIcon.Warning));
         CreateTray();
         RegisterHotkeys();
 
@@ -93,7 +97,7 @@ public partial class App : Application
         _window.Left = 10;
         _window.Top = 10;
         var scroll = (System.Windows.Controls.ScrollViewer)_window.FindName("ContentScroll");
-        foreach (var key in new[] { "dashboard", "lighting", "games", "fans", "power", "battery", "sound", "scenes", "settings" })
+        foreach (var key in new[] { "dashboard", "monitor", "lighting", "games", "fans", "power", "battery", "sound", "keys", "scenes", "system", "settings" })
         {
             _window.Navigate(key);
             await Task.Delay(2200);
@@ -227,6 +231,7 @@ public partial class App : Application
         _hotkeySource.AddHook(HotkeyHook);
         const uint ctrlAlt = 0x0002 | 0x0001 | 0x0004 | 0x4000; // MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT
         for (var i = 0; i <= 9; i++) RegisterHotKey(_hotkeySource.Handle, 100 + i, ctrlAlt, (uint)(0x30 + i));
+        RegisterHotKey(_hotkeySource.Handle, 120, ctrlAlt, 0x46); // Ctrl+Alt+Shift+F = fans full on/off
     }
 
     private IntPtr HotkeyHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -234,7 +239,12 @@ public partial class App : Application
         const int WM_HOTKEY = 0x0312;
         if (msg != WM_HOTKEY || _cc is null) return IntPtr.Zero;
         var idx = wParam.ToInt32() - 100;
-        if (idx == 0) ToggleKeyboard();
+        if (idx == 20)
+        {
+            _cc.ToggleFanBoost();
+            _tray?.ShowBalloonTip(1500, "ClevoControl", Loc.T("Lüfter: ", "Fans: ") + Pages.FansPage.ModeName(_cc.Settings.Fan.Mode), Forms.ToolTipIcon.None);
+        }
+        else if (idx == 0) ToggleKeyboard();
         else if (idx >= 1 && idx <= _cc.Settings.Scenes.Count)
         {
             var scene = _cc.Settings.Scenes[idx - 1];
@@ -251,6 +261,7 @@ public partial class App : Application
         if (_hotkeySource is not null)
         {
             for (var i = 0; i <= 9; i++) UnregisterHotKey(_hotkeySource.Handle, 100 + i);
+            UnregisterHotKey(_hotkeySource.Handle, 120);
             _hotkeySource.Dispose();
         }
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;

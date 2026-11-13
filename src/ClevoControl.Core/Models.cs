@@ -156,6 +156,9 @@ public enum WindowsPowerMode
     BestPerformance,
 }
 
+/// <summary>Clevo "FlexiCharger": charging starts below <see cref="Start"/> % and stops at <see cref="Stop"/> %.</summary>
+public sealed record ChargeLimitInfo(bool Enabled, int Start, int Stop, IReadOnlyList<int> StartOptions, IReadOnlyList<int> StopOptions);
+
 public sealed record FanReading(int Rpm, int DutyPercent, int TemperatureC);
 
 public sealed record SensorSnapshot(

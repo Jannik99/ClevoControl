@@ -87,3 +87,23 @@ They are deliberately **not** probed – writing unknown EC commands can misconf
 | 2, 32 | keyboard mode in Clevo's app |
 | 2, 35 | keyboard brightness level in Clevo's app |
 | 4, 5 | fan mode in Clevo's app |
+
+## SetDCHU_DataEx – command `4` (request/response, 256 bytes each)
+
+Only exported by the InsydeDCHU.dll copies inside Clevo's Store apps (not by the driver-store copy).
+ClevoControl copies such a DLL into `%LOCALAPPDATA%\ClevoControl\dchu` on first use.
+The first request byte is a sub-command (seen in Clevo's Control Center):
+
+| Sub | Direction | Meaning |
+|---|---|---|
+| `30` | read | FlexiCharger: `[0]` enabled, `[1]` start %, `[2]` stop %, `[16..31]` allowed start values, `[32..47]` allowed stop values (all zero = not supported) |
+| `31` | write | FlexiCharger: request `[31, enabled, start, stop]` |
+| `7`, `8`, `21`, `22`, `24`, `25`, `26` | ? | other Control Center features, not used |
+
+On the N9x0TD_TF the FlexiCharger response is all zero (not supported via software; the BIOS option is the only way there).
+
+## Cooling modes (no EC involved)
+
+Written to the active Windows power plan for AC and DC:
+`PERFBOOSTMODE` (`be337238-0d82-4146-a960-4f3749d470c7`, 0 = off) and
+`PROCTHROTTLEMAX` (`bc5038f7-23e0-4960-96da-33abaf5935ec`, percent). The original values are saved and restored by “Normal”.

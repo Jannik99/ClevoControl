@@ -36,6 +36,12 @@ public interface IClevoHardware
     /// <summary>Reads the profile stored by Clevo's Control Center (may be null if unknown).</summary>
     PerformanceProfile? ReadStoredPerformanceProfile();
 
+    /// <summary>FlexiCharger state, or null if the model does not report support.</summary>
+    ChargeLimitInfo? ReadChargeLimit();
+
+    /// <summary>Sets FlexiCharger. Only call with values from <see cref="ChargeLimitInfo"/> options.</summary>
+    void SetChargeLimit(bool enabled, int start, int stop);
+
     /// <summary>Raw spec buffer (EC command 0x0D) for diagnostics.</summary>
     byte[] ReadSpecBuffer();
 

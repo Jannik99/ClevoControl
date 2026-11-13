@@ -88,7 +88,14 @@ public sealed class DashboardPage(ControlCenter cc) : AppPage(cc)
             sub.Text = detail(s);
             spark.SetValues(h.Select(value).ToList());
         });
-        return Ui.CardBorder(stack, new Thickness(0, 0, 0, 8));
+        var card = Ui.CardBorder(stack, new Thickness(0, 0, 0, 8));
+        // Click opens the detailed Monitor page.
+        card.Cursor = System.Windows.Input.Cursors.Hand;
+        card.ToolTip = Loc.T("Klicken für Details", "Click for details");
+        card.MouseLeftButtonUp += (_, _) => ((MainWindow)Application.Current.MainWindow!).Navigate("monitor");
+        card.MouseEnter += (_, _) => card.SetResourceReference(Border.BackgroundProperty, "CardBackgroundFillColorSecondaryBrush");
+        card.MouseLeave += (_, _) => card.SetResourceReference(Border.BackgroundProperty, Ui.CardBg);
+        return card;
     }
 
     private Border KeyboardCard()

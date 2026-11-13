@@ -38,6 +38,9 @@ public sealed class KeyboardHook : IDisposable
 
     public volatile bool BlockWindowsKey;
 
+    /// <summary>Optional filter (vk, isKeyDown) → true swallows the event. Injected input is never filtered.</summary>
+    public Func<int, bool, bool>? Filter;
+
     /// <summary>Raised for every key-down (on the hook thread – keep handlers fast).</summary>
     public event Action? KeyPressed;
 
@@ -55,8 +58,14 @@ public sealed class KeyboardHook : IDisposable
         {
             var msg = wParam.ToInt32();
             var vk = Marshal.ReadInt32(lParam);
+            var injected = (Marshal.ReadInt32(lParam, 8) & 0x10) != 0; // LLKHF_INJECTED
+            var down = msg is WM_KEYDOWN or WM_SYSKEYDOWN;
             if (BlockWindowsKey && vk is VK_LWIN or VK_RWIN) return 1;
-            if (msg is WM_KEYDOWN or WM_SYSKEYDOWN) KeyPressed?.Invoke();
+            if (!injected && Filter is { } f)
+            {
+                try { if (f(vk, down)) return 1; } catch { }
+            }
+            if (down) KeyPressed?.Invoke();
         }
         return CallNextHookEx(_hook, code, wParam, lParam);
     }

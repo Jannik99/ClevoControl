@@ -8,6 +8,40 @@ namespace ClevoControl.App.Pages;
 
 public sealed class BatteryPage(ControlCenter cc) : AppPage(cc)
 {
+    private UIElement ChargeLimitCard()
+    {
+        var info = Cc.Hardware.ReadChargeLimit();
+        if (info is null)
+        {
+            return Ui.SettingsCard(Icons.BatterySaver, Loc.T("Ladelimit (FlexiCharger)", "Charge limit (FlexiCharger)"),
+                Loc.T("Dein Modell meldet keine Software-Steuerung dafür. Falls vorhanden, findest du FlexiCharger im BIOS-Setup.",
+                      "Your model does not report software control for it. If available, you find FlexiCharger in the BIOS setup."), null);
+        }
+        bool enabled = info.Enabled;
+        int start = info.StartOptions.Contains(info.Start) ? info.Start : info.StartOptions[0];
+        int stop = info.StopOptions.Contains(info.Stop) ? info.Stop : info.StopOptions[^1];
+        var status = Ui.Text("", 12, sub: true);
+        void Save()
+        {
+            try
+            {
+                if (start >= stop) { status.Text = Loc.T("Start muss unter Stopp liegen.", "Start must be below stop."); return; }
+                Cc.Hardware.SetChargeLimit(enabled, start, stop);
+                status.Text = Loc.T("Gespeichert.", "Saved.");
+            }
+            catch (Exception ex) { status.Text = ex.Message; }
+        }
+        var s = Ui.Stack(
+            Ui.Switch(Loc.T("Ladelimit aktiv", "Charge limit active"), enabled, v => { enabled = v; Save(); },
+                Loc.T("Schont den Akku, wenn der Laptop meist am Netzteil hängt.", "Protects the battery if the laptop is mostly plugged in.")),
+            Ui.Row(Loc.T("Laden starten unter", "Start charging below"), Ui.Combo(info.StartOptions.Select(o => (o, $"{o} %")), start, v => { start = v; Save(); }, 120)),
+            Ui.Row(Loc.T("Laden stoppen bei", "Stop charging at"), Ui.Combo(info.StopOptions.Select(o => (o, $"{o} %")), stop, v => { stop = v; Save(); }, 120)),
+            Ui.InfoBar(Loc.T("Experimentell: nutzt dieselben Befehle wie Clevos Control Center, auf diesem Modell aber noch nicht von uns getestet.",
+                "Experimental: uses the same commands as Clevo's Control Center, but not yet tested by us on this model."), true),
+            status);
+        return Ui.Card(s, Loc.T("Ladelimit (FlexiCharger)", "Charge limit (FlexiCharger)"), icon: Icons.BatterySaver);
+    }
+
     public override UIElement Build()
     {
         var root = new StackPanel();
@@ -41,6 +75,7 @@ public sealed class BatteryPage(ControlCenter cc) : AppPage(cc)
         if (b.Manufacturer is { Length: > 0 } m) Add(Loc.T("Hersteller", "Manufacturer"), m);
         if (b.Chemistry is { } c) Add(Loc.T("Zelltyp", "Chemistry"), c);
         root.Children.Add(Ui.Card(rows, Loc.T("Details", "Details")));
+        root.Children.Add(ChargeLimitCard());
 
         root.Children.Add(Ui.InfoBar(Loc.T(
             "Akku schonen: Viele Clevo-Modelle haben „FlexiCharger“ (nur zwischen z. B. 40 und 80 % laden). Wenn dein Modell das unterstützt, findest du es im BIOS-Setup (beim Start meist F2) und kannst dort Start- und Stopp-Schwelle festlegen.",

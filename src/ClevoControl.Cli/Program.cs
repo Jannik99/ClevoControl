@@ -21,6 +21,10 @@ if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
           fan auto|max                   fan mode
           fan duty <cpu%> [gpu%]         fixed fan duty (use with care; 'fan auto' to undo)
           profile quiet|powersaving|performance|entertainment
+          cooling status|normal|cool|verycool   turbo / CPU limit via the Windows power plan
+          charge status                  FlexiCharger state (if the model supports it)
+          charge <start> <stop> | charge off
+          sysinfo                        model, BIOS, EC, drivers (for bug reports)
           dump                           raw EC buffers (for bug reports)
 
         Options: --simulate   use simulated hardware
@@ -73,6 +77,32 @@ try
             break;
         case "profile":
             hw.SetPerformanceProfile(Enum.Parse<PerformanceProfile>(Arg(1), true));
+            break;
+        case "cooling":
+        {
+            var arg = args.Length > 1 ? args[1].ToLowerInvariant() : "status";
+            if (arg != "status")
+            {
+                var mode = Enum.Parse<ClevoControl.Core.Services.CoolingMode>(arg, true);
+                if (!ClevoControl.Core.Services.CoolingService.Apply(mode)) { Console.Error.WriteLine("Windows refused the change."); return 1; }
+            }
+            var (boost, max) = ClevoControl.Core.Services.CoolingService.Read();
+            Console.WriteLine($"Mode: {ClevoControl.Core.Services.CoolingService.Detect()}  (turbo boost mode {boost}, max processor state {max} %)");
+            break;
+        }
+        case "charge":
+        {
+            var info = hw.ReadChargeLimit();
+            if (info is null) { Console.WriteLine("FlexiCharger is not supported via software on this model."); break; }
+            if (args.Length > 1 && args[1].Equals("off", StringComparison.OrdinalIgnoreCase)) hw.SetChargeLimit(false, info.Start, info.Stop);
+            else if (args.Length > 2) hw.SetChargeLimit(true, int.Parse(args[1]), int.Parse(args[2]));
+            info = hw.ReadChargeLimit()!;
+            Console.WriteLine($"Enabled: {info.Enabled}, start {info.Start} %, stop {info.Stop} %");
+            Console.WriteLine($"Allowed start: {string.Join(", ", info.StartOptions)} / stop: {string.Join(", ", info.StopOptions)}");
+            break;
+        }
+        case "sysinfo":
+            Console.Write(ClevoControl.Core.Services.SystemInfoService.AsText(ClevoControl.Core.Services.SystemInfoService.Collect(hw)));
             break;
         case "dump":
             Console.WriteLine("spec (0x0D): " + Convert.ToHexString(hw.ReadSpecBuffer().AsSpan(0, 64)));

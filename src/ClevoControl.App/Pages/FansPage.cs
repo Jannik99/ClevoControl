@@ -56,7 +56,18 @@ public sealed class FansPage(ControlCenter cc) : AppPage(cc)
             var icon = m switch { FanMode.Auto => Icons.Auto, FanMode.Max => Icons.Max, _ => Icons.Edit };
             modes.Children.Add(Ui.Tile(icon, ModeName(m), desc, F.Mode == m, "fanmode", () => { F.Mode = mode; Cc.ApplyFans(); }, 170));
         }
-        root.Children.Add(Ui.Card(modes, Loc.T("Modus", "Mode")));
+        var modeStack = Ui.Stack(modes,
+            Ui.Switch(Loc.T("Lüfter je Leistungsprofil merken", "Remember fans per performance profile"), F.PerProfile, v =>
+            {
+                F.PerProfile = v;
+                if (v) Cc.InitFanProfiles();
+                Cc.Store.SaveSoon();
+            }, Loc.T($"Modus und Kurven gelten dann nur für das aktuelle Profil ({PowerPage.ProfileName(Cc.Settings.Power.Profile)}). Wechselst du das Profil, werden dessen Lüftereinstellungen geladen.",
+                     $"Mode and curves then only apply to the current profile ({PowerPage.ProfileName(Cc.Settings.Power.Profile)}). Switching the profile loads its fan settings.")),
+            Ui.Text(Loc.T("Tastenkürzel „Lüfter voll“: Strg+Alt+Umschalt+F (wenn Tastenkürzel in den Einstellungen aktiv sind).",
+                "Hotkey “fans full”: Ctrl+Alt+Shift+F (when hotkeys are enabled in Settings)."), 12, sub: true));
+        root.Children.Add(Ui.Card(modeStack, Loc.T("Modus", "Mode")));
+        Cc.FanSettingsSwapped += OnSwapped;
 
         // Curves
         var cpuCurve = new FanCurveEditor(F.CpuCurve);
@@ -111,5 +122,15 @@ public sealed class FansPage(ControlCenter cc) : AppPage(cc)
         }
     }
 
-    public override void OnLeave() => _timer?.Stop();
+    public override void OnLeave()
+    {
+        _timer?.Stop();
+        Cc.FanSettingsSwapped -= OnSwapped;
+    }
+
+    // The profile changed and with it the fan settings: rebuild the page so the editors show the new curves.
+    private void OnSwapped() => Application.Current.Dispatcher.BeginInvoke(() =>
+    {
+        if (Application.Current.MainWindow is MainWindow w && w.IsVisible) w.Navigate("fans");
+    });
 }

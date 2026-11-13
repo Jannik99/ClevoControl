@@ -26,9 +26,14 @@
 | **Status lights** | CPU/GPU temperature, CPU load, battery level, “On Air” (red while an app uses the microphone) |
 | **Games** | Health/mana bar read from the screen for *any* game (no injection, anti-cheat safe), native Counter-Strike 2 Game State Integration (health, flash, fire, bomb) |
 | **Other RGB software** | Built-in **OpenRGB SDK server** → Artemis, Aurora and other OpenRGB clients (and their game plugins) can drive the keyboard |
-| **Fans** | Live RPM/duty/temperatures, auto / max / **custom fan curve** with a hard-coded safety net |
+| **Fans** | Live RPM/duty/temperatures, auto / max / **custom fan curve** with a hard-coded safety net, fans remembered **per performance profile**, “fans full” hotkey |
+| **Monitor** | Detailed graphs: load and clock **per CPU core**, NVIDIA GPU load, VRAM, clocks, power draw (NVML), temperature and fan history |
+| **Cooling modes** | Turbo off / CPU limit through the Windows power plan – lowers temperatures **without any driver**, even when the BIOS locks undervolting; overheat notification |
+| **Key mapping** | FlexiKey replacement: map keys to shortcuts, text or programs, or disable them |
+| **System** | Model, BIOS, EC firmware, drivers – copied for bug reports with one click; overview of Clevo background software |
+| **Battery** | Health, capacity, cycles; **FlexiCharger** charge limit on models that expose it to software (experimental) |
 | **Performance** | Clevo profiles (Quiet, Power saving, Performance, Entertainment), Windows power mode, automatic AC/battery switching, lower refresh rate on battery |
-| **More** | Battery health & cycle count, volume / mute / mic mute / output device, Windows-key lock, scenes with hotkeys (Ctrl+Alt+Shift+1…9, opt-in), tray menu, autostart, light & dark mode, German & English |
+| **More** | Volume / mute / mic mute / output device, Windows-key lock, scenes with hotkeys (Ctrl+Alt+Shift+1…9, opt-in), tray menu, autostart, light & dark mode, German & English |
 | **Scripting** | Local HTTP API (127.0.0.1 only) and the `clevoctl` command-line tool |
 
 <p>
@@ -36,6 +41,7 @@
   <img src="docs/images/games.png" width="49%" alt="Games">
   <img src="docs/images/fans.png" width="49%" alt="Fans">
   <img src="docs/images/power.png" width="49%" alt="Performance">
+  <img src="docs/images/monitor.png" width="49%" alt="Monitor">
 </p>
 
 ## Requirements
@@ -111,7 +117,7 @@ Clevo's driver package installs `InsydeDCHU.dll`, which talks to the embedded co
 
 ## Not included (on purpose)
 
-* **CPU overclocking / undervolting / power limits** – needs a kernel driver. The popular WinRing0 driver has a known vulnerability and is flagged by Microsoft Defender, so it will not be bundled. See [docs/OVERCLOCKING.md](docs/OVERCLOCKING.md).
+* **CPU overclocking / undervolting / power limits** – needs a kernel driver (the driver-free *cooling modes* cover the most common need: lower temperatures). The popular WinRing0 driver has a known vulnerability and is flagged by Microsoft Defender, so it will not be bundled. See [docs/OVERCLOCKING.md](docs/OVERCLOCKING.md).
 * Fake Razer Chroma / Logitech / iCUE SDK DLLs – too invasive. Use the OpenRGB server instead.
 
 ## Contributing
@@ -138,7 +144,12 @@ Issues and pull requests are welcome – especially reports from other Clevo mod
 * Über 20 Effekte, darunter **Ambilight** für Filme und Serien, Musik-Modus, Temperatur-, Akku- und Mikrofon-Anzeige („On Air“), Pomodoro, Tipp-Reaktiv sowie die Hardware-Effekte des Controllers
 * Spiele: Lebens- und Manaleiste vom Bildschirm (jedes Spiel, anti-cheat-sicher) und Counter-Strike 2 per offizieller Game State Integration
 * **OpenRGB-Server**: Artemis, Aurora & Co. inklusive ihrer Spiel-Plugins steuern die Tastatur
-* Lüfter: Live-Werte, Auto, Max oder **eigene Lüfterkurve mit Sicherheitsnetz**
+* Lüfter: Live-Werte, Auto, Max oder **eigene Lüfterkurve mit Sicherheitsnetz**, Lüfter je Leistungsprofil, Kürzel „Lüfter voll“
+* **Monitor:** Auslastung und Takt pro CPU-Kern, GPU-Last, Grafikspeicher, Takt und Verbrauch
+* **Kühl-Modi:** Turbo aus oder CPU-Limit über den Windows-Energiesparplan, ganz ohne Treiber, auch wenn das BIOS Undervolting sperrt; dazu eine Hitzewarnung
+* **Tastenbelegung** als FlexiKey-Ersatz: Tastenkombinationen, Texte, Programme, Tasten sperren
+* **System:** BIOS, EC und Treiber auf einen Klick kopiert (für Fehlerberichte), Überblick über Clevos Hintergrundprogramme
+* Ladelimit (FlexiCharger) auf Modellen, die es per Software anbieten (experimentell)
 * Leistungsprofile, Windows-Energiemodus, automatischer Wechsel bei Akku oder Netzteil, niedrigere Bildwiederholrate im Akkubetrieb
 * Akku-Gesundheit, Sound (Lautstärke, Stummschaltung, Mikrofon, Ausgabegerät), Windows-Taste sperren
 * Szenen mit Tastenkürzeln (Strg+Alt+Umschalt+1…9, optional), Tray-Menü, Autostart, Hell- und Dunkelmodus

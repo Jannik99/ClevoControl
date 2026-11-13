@@ -21,10 +21,14 @@ public sealed class PowerService
 
     public static bool IsOnAc => Win32.GetSystemPowerStatus(out var s) && s.ACLineStatus == 1;
 
+    /// <summary>Raised after a profile was sent to the EC.</summary>
+    public event Action<PerformanceProfile>? ProfileApplied;
+
     public void SetProfile(PerformanceProfile profile, bool syncWindows)
     {
         _hw.SetPerformanceProfile(profile);
         ActiveProfile = profile;
+        ProfileApplied?.Invoke(profile);
         if (syncWindows)
         {
             SetWindowsPowerMode(profile switch

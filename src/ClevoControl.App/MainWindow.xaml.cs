@@ -21,6 +21,9 @@ public partial class MainWindow : Window
         _pages = new()
         {
             ["dashboard"] = () => new DashboardPage(cc),
+            ["monitor"] = () => new MonitorPage(cc),
+            ["keys"] = () => new KeysPage(cc),
+            ["system"] = () => new SystemPage(cc),
             ["lighting"] = () => new LightingPage(cc),
             ["games"] = () => new GamesPage(cc),
             ["fans"] = () => new FansPage(cc),
@@ -32,13 +35,16 @@ public partial class MainWindow : Window
         };
 
         AddNav("dashboard", Icons.Home, Loc.T("Startseite", "Home"), true);
+        AddNav("monitor", Icons.Diagnostic, Loc.T("Monitor", "Monitor"));
         AddNav("lighting", Icons.Color, Loc.T("Beleuchtung", "Lighting"));
         AddNav("games", Icons.Game, Loc.T("Spiele & Apps", "Games & apps"));
         AddNav("fans", Icons.Gauge, Loc.T("Lüfter", "Fans"));
         AddNav("power", Icons.Lightning, Loc.T("Leistung", "Performance"));
         AddNav("battery", Icons.Battery, Loc.T("Akku", "Battery"));
         AddNav("sound", Icons.Volume, Loc.T("Sound", "Sound"));
+        AddNav("keys", Icons.Keyboard, Loc.T("Tastenbelegung", "Key mapping"));
         AddNav("scenes", Icons.Star, Loc.T("Szenen", "Scenes"));
+        AddNav("system", Icons.Laptop, Loc.T("System", "System"));
         AddNav("settings", Icons.Settings, Loc.T("Einstellungen", "Settings"));
 
         var hw = cc.Hardware;

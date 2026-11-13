@@ -171,6 +171,50 @@ public sealed class ClevoHardware : IClevoHardware
         }
     }
 
+    // FlexiCharger via SetDCHU_DataEx(4, …): sub-command 30 reads, 31 writes (from Clevo's Control Center).
+    private const int CmdEx = 4;
+    private const byte ExGetCharger = 30, ExSetCharger = 31;
+    private DchuEx? _ex;
+    private bool _exTried;
+
+    private DchuEx? Ex
+    {
+        get
+        {
+            if (!_exTried)
+            {
+                _exTried = true;
+                _ex = DchuEx.TryLoad(_dchu.LibraryPath);
+            }
+            return _ex;
+        }
+    }
+
+    public ChargeLimitInfo? ReadChargeLimit()
+    {
+        try
+        {
+            if (Ex is not { } ex) return null;
+            var r = ex.Call(CmdEx, [ExGetCharger]);
+            var starts = r[16..32].Where(b => b is > 0 and <= 100).Select(b => (int)b).ToList();
+            var stops = r[32..48].Where(b => b is > 0 and <= 100).Select(b => (int)b).ToList();
+            if (starts.Count == 0 || stops.Count == 0) return null; // not supported on this model
+            return new ChargeLimitInfo(r[0] != 0, r[1], r[2], starts, stops);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public void SetChargeLimit(bool enabled, int start, int stop)
+    {
+        var info = ReadChargeLimit() ?? throw new NotSupportedException("FlexiCharger is not supported on this model.");
+        if (!info.StartOptions.Contains(start) || !info.StopOptions.Contains(stop) || start >= stop)
+            throw new ArgumentException("Charge thresholds must be one of the values offered by the firmware, start < stop.");
+        Ex!.Call(CmdEx, [ExSetCharger, (byte)(enabled ? 1 : 0), (byte)start, (byte)stop]);
+    }
+
     public byte[] ReadSpecBuffer() => _dchu.GetBuffer(CmdGetSpecs);
 
     public byte[] ReadFanBuffer() => _dchu.GetBuffer(CmdGetFanInfo);

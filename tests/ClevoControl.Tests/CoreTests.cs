@@ -178,3 +178,45 @@ public class ProfileMappingTests
     public void Ec_value_equals_clevo_ui_index(PerformanceProfile p, uint ec) =>
         Assert.Equal(ec, ClevoControl.Core.Hardware.ClevoHardware.ProfileToEc(p));
 }
+
+public class KeyRemapTests
+{
+    [Theory]
+    [InlineData("Ctrl+Shift+Esc", new[] { 0x11, 0x10, 0x1B })]
+    [InlineData("Win+D", new[] { 0x5B, 0x44 })]
+    [InlineData("MediaPlayPause", new[] { 0xB3 })]
+    [InlineData("Strg + Alt + Entf", new[] { 0x11, 0x12, 0x2E })]
+    [InlineData("F12", new[] { 0x7B })]
+    public void Parses_shortcuts(string text, int[] expected) =>
+        Assert.Equal(expected, ClevoControl.Core.Services.KeyRemapService.ParseShortcut(text));
+
+    [Fact]
+    public void Rejects_unknown_keys() => Assert.Null(ClevoControl.Core.Services.KeyRemapService.ParseShortcut("Ctrl+Banana"));
+
+    [Fact]
+    public void Describes_mapping() =>
+        Assert.Equal("Ctrl+Shift+F5", ClevoControl.Core.Services.KeyRemapService.Describe(new KeyMapping { Key = 0x74, Ctrl = true, Shift = true }));
+
+    [Fact]
+    public void Filter_swallows_only_mapped_keys_and_their_key_up()
+    {
+        var svc = new ClevoControl.Core.Services.KeyRemapService();
+        svc.Apply(new KeyRemapSettings { Enabled = true, Mappings = [new KeyMapping { Key = 0x13, Action = KeyActionType.Disable }] });
+        Assert.True(svc.Filter(0x13, true));   // Pause down swallowed
+        Assert.True(svc.Filter(0x13, false));  // and its key-up
+        Assert.False(svc.Filter(0x41, true));  // 'A' untouched
+        Assert.False(svc.Filter(0x13, false)); // stray key-up not swallowed
+    }
+}
+
+public class MonitorTests
+{
+    [Fact]
+    public void Cpu_monitor_reports_cores()
+    {
+        using var cpu = new ClevoControl.Core.Monitoring.CpuMonitor();
+        Assert.True(cpu.LogicalCores > 0);
+        var s = cpu.Sample();
+        Assert.All(s.Cores, c => Assert.InRange(c.LoadPercent, 0, 100));
+    }
+}

@@ -27,6 +27,12 @@ public sealed class ControlCenter : IDisposable
         Hook = new KeyboardHook();
         Hook.KeyPressed += Lighting.NotifyKeyPress;
         Hook.BlockWindowsKey = Settings.General.WinKeyLock;
+        KeyRemap = new KeyRemapService();
+        KeyRemap.Apply(Settings.KeyRemap);
+        Hook.Filter = KeyRemap.Filter;
+        Power.ProfileApplied += OnProfileApplied;
+        Sensors.Updated += CheckOverheat;
+        _fanProfileOwner = Settings.Power.Profile;
 
         if (store.IsFirstRun)
         {
@@ -54,6 +60,17 @@ public sealed class ControlCenter : IDisposable
     public SoundService Sound { get; }
     public KeyboardHook Hook { get; }
     public Cs2Integration Cs2 { get; }
+    public KeyRemapService KeyRemap { get; }
+
+    /// <summary>Raised (thread pool) when CPU or GPU reach the overheat threshold; at most every 5 minutes.</summary>
+    public event Action<string>? Overheat;
+
+    /// <summary>Raised when the active fan settings were swapped because the performance profile changed.</summary>
+    public event Action? FanSettingsSwapped;
+
+    private PerformanceProfile _fanProfileOwner;
+    private DateTime _lastOverheat = DateTime.MinValue;
+    private FanMode? _modeBeforeBoost;
 
     public int OpenRgbClients => _openRgb?.ClientCount ?? 0;
     public string? IntegrationError { get; private set; }
@@ -82,6 +99,93 @@ public sealed class ControlCenter : IDisposable
     {
         Hook.BlockWindowsKey = Settings.General.WinKeyLock;
         Store.SaveSoon();
+    }
+
+    public void ApplyKeyRemap()
+    {
+        KeyRemap.Apply(Settings.KeyRemap);
+        Store.SaveSoon();
+    }
+
+    /// <summary>Turbo off / CPU limit through the Windows power plan. Returns false if Windows refused.</summary>
+    public bool ApplyCooling()
+    {
+        var c = Settings.Cooling;
+        if (c.SavedBoostMode is null)
+        {
+            try
+            {
+                var (boost, max) = CoolingService.Read();
+                if (boost != 0 && max >= 100) { c.SavedBoostMode = boost; c.SavedMaxState = max; }
+            }
+            catch { }
+        }
+        var ok = CoolingService.Apply(c.Mode, c.SavedBoostMode ?? 2, (uint)(c.SavedMaxState ?? 100));
+        Store.SaveSoon();
+        return ok;
+    }
+
+    /// <summary>Toggles fans between maximum and the previous mode (hotkey).</summary>
+    public void ToggleFanBoost()
+    {
+        if (Settings.Fan.Mode == FanMode.Max)
+        {
+            Settings.Fan.Mode = _modeBeforeBoost ?? FanMode.Auto;
+            _modeBeforeBoost = null;
+        }
+        else
+        {
+            _modeBeforeBoost = Settings.Fan.Mode;
+            Settings.Fan.Mode = FanMode.Max;
+        }
+        ApplyFans();
+    }
+
+    private FanProfile SnapshotFans() => new()
+    {
+        Mode = Settings.Fan.Mode,
+        CpuCurve = Settings.Fan.CpuCurve.Select(p => new FanCurvePoint(p.Temperature, p.Duty)).ToList(),
+        GpuCurve = Settings.Fan.GpuCurve.Select(p => new FanCurvePoint(p.Temperature, p.Duty)).ToList(),
+    };
+
+    /// <summary>Call when "fans per profile" is switched on, so the current fans belong to the current profile.</summary>
+    public void InitFanProfiles()
+    {
+        _fanProfileOwner = Settings.Power.Profile;
+        Settings.Fan.Profiles[_fanProfileOwner] = SnapshotFans();
+        Store.SaveSoon();
+    }
+
+    private void OnProfileApplied(PerformanceProfile profile)
+    {
+        var f = Settings.Fan;
+        if (!f.PerProfile || profile == _fanProfileOwner)
+        {
+            _fanProfileOwner = profile;
+            return;
+        }
+        f.Profiles[_fanProfileOwner] = SnapshotFans();
+        if (f.Profiles.TryGetValue(profile, out var fp))
+        {
+            f.Mode = fp.Mode;
+            f.CpuCurve = fp.CpuCurve.Select(p => new FanCurvePoint(p.Temperature, p.Duty)).ToList();
+            f.GpuCurve = fp.GpuCurve.Select(p => new FanCurvePoint(p.Temperature, p.Duty)).ToList();
+        }
+        _fanProfileOwner = profile;
+        Fans.Apply(f);
+        Store.SaveSoon();
+        FanSettingsSwapped?.Invoke();
+    }
+
+    private void CheckOverheat(SensorSnapshot s)
+    {
+        var c = Settings.Cooling;
+        if (!c.OverheatWarning) return;
+        var hot = Math.Max(s.Cpu.TemperatureC, s.Gpu.TemperatureC);
+        if (hot < c.OverheatThreshold || DateTime.UtcNow - _lastOverheat < TimeSpan.FromMinutes(5)) return;
+        _lastOverheat = DateTime.UtcNow;
+        var which = s.Cpu.TemperatureC >= s.Gpu.TemperatureC ? "CPU" : "GPU";
+        Overheat?.Invoke($"{which} {hot} °C");
     }
 
     public void ApplyScene(Scene scene)

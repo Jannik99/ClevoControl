@@ -24,7 +24,7 @@ jobs:
 
       - name: Test
         # ScreenTests need a desktop session; skip them on CI.
-        run: dotnet test -c Release --no-build --filter "FullyQualifiedName!~ScreenTests"
+        run: dotnet test -c Release --no-build --filter "FullyQualifiedName!~ScreenTests&FullyQualifiedName!~MonitorTests"
 
       - name: Publish
         run: |

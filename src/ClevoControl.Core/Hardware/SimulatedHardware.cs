@@ -53,6 +53,12 @@ public sealed class SimulatedHardware : IClevoHardware
 
     public void SetPerformanceProfile(PerformanceProfile profile) => _profile = profile;
     public PerformanceProfile? ReadStoredPerformanceProfile() => _profile;
+    private ChargeLimitInfo _charge = new(false, 60, 90, [40, 50, 60, 70, 80], [60, 70, 80, 90, 100]);
+
+    public ChargeLimitInfo? ReadChargeLimit() => _charge;
+
+    public void SetChargeLimit(bool enabled, int start, int stop) => _charge = _charge with { Enabled = enabled, Start = start, Stop = stop };
+
     public byte[] ReadSpecBuffer() => new byte[256];
     public byte[] ReadFanBuffer() => new byte[256];
 }
