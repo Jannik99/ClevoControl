@@ -1,0 +1,73 @@
+using ClevoControl.Core.Hardware;
+using ClevoControl.Core.Native;
+
+namespace ClevoControl.Core.Services;
+
+/// <summary>Polls EC sensors, CPU load and memory once per second and keeps a short history.</summary>
+public sealed class SensorService : IDisposable
+{
+    public const int HistoryLength = 120;
+
+    private readonly IClevoHardware _hw;
+    private readonly Timer _timer;
+    private readonly LinkedList<SensorSnapshot> _history = new();
+    private readonly object _sync = new();
+    private ulong _lastIdle, _lastTotal;
+
+    public SensorService(IClevoHardware hw)
+    {
+        _hw = hw;
+        Latest = SensorSnapshot.Empty;
+        _timer = new Timer(_ => Poll(), null, 0, 1000);
+    }
+
+    public SensorSnapshot Latest { get; private set; }
+
+    /// <summary>Raised on a thread-pool thread after each poll.</summary>
+    public event Action<SensorSnapshot>? Updated;
+
+    public IReadOnlyList<SensorSnapshot> History
+    {
+        get { lock (_sync) return _history.ToList(); }
+    }
+
+    private void Poll()
+    {
+        try
+        {
+            var (cpu, gpu, gpu2) = _hw.ReadFans();
+            var (memPct, memTotal) = ReadMemory();
+            var snap = new SensorSnapshot(DateTime.Now, cpu, gpu, gpu2, ReadCpuLoad(), memPct, memTotal);
+            lock (_sync)
+            {
+                _history.AddLast(snap);
+                while (_history.Count > HistoryLength) _history.RemoveFirst();
+            }
+            Latest = snap;
+            Updated?.Invoke(snap);
+        }
+        catch
+        {
+            // Sensor read failed (e.g. during resume) – try again next tick.
+        }
+    }
+
+    private double ReadCpuLoad()
+    {
+        if (!Win32.GetSystemTimes(out var idle, out var kernel, out var user)) return 0;
+        var total = kernel.Value + user.Value; // kernel includes idle
+        var dIdle = idle.Value - _lastIdle;
+        var dTotal = total - _lastTotal;
+        _lastIdle = idle.Value;
+        _lastTotal = total;
+        return dTotal == 0 ? 0 : Math.Clamp(100.0 * (dTotal - dIdle) / dTotal, 0, 100);
+    }
+
+    private static (double Percent, double TotalGb) ReadMemory()
+    {
+        var m = new Win32.MEMORYSTATUSEX { dwLength = (uint)System.Runtime.InteropServices.Marshal.SizeOf<Win32.MEMORYSTATUSEX>() };
+        return Win32.GlobalMemoryStatusEx(ref m) ? (m.dwMemoryLoad, m.ullTotalPhys / 1024d / 1024 / 1024) : (0, 0);
+    }
+
+    public void Dispose() => _timer.Dispose();
+}
