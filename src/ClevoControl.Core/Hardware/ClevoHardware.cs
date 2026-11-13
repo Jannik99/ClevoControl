@@ -135,13 +135,16 @@ public sealed class ClevoHardware : IClevoHardware
         _dchu.Set(CmdFanDuty, arg);
     }
 
-    // Clevo's UI index (Quiet, PowerSaving, Performance, Entertainment) maps to these EC values.
-    private static uint ProfileToEc(PerformanceProfile p) => p switch
+    // The EC value equals Clevo's UI index: 0 Quiet, 1 Power saving, 2 Performance, 3 Entertainment.
+    // Verified from Clevo's Fn-key app, which sends ReadAppSettings(1,1) unchanged as option 0x19
+    // (only Performance may get extra flags: 0x80 = turbo fan, 0x40 = an unknown model option).
+    // NOTE: v0.1.0 used a wrong, permuted mapping (Performance was sent as Quiet).
+    internal static uint ProfileToEc(PerformanceProfile p) => p switch
     {
-        PerformanceProfile.Quiet => 3,
+        PerformanceProfile.Quiet => 0,
         PerformanceProfile.PowerSaving => 1,
-        PerformanceProfile.Performance => 0,
-        _ => 2, // Entertainment (firmware default)
+        PerformanceProfile.Performance => 2,
+        _ => 3, // Entertainment
     };
 
     public void SetPerformanceProfile(PerformanceProfile profile)

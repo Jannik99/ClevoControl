@@ -28,7 +28,7 @@ public sealed class SettingsPage(ControlCenter cc) : AppPage(cc)
         s.Children.Add(Ui.Switch(Loc.T("Beim Autostart minimiert starten", "Start minimized on autostart"), g.StartMinimized, v => { g.StartMinimized = v; Cc.Store.SaveSoon(); }));
         s.Children.Add(Ui.Switch(Loc.T("Schließen minimiert in den Infobereich", "Closing minimizes to tray"), g.CloseToTray, v => { g.CloseToTray = v; Cc.Store.SaveSoon(); },
             Loc.T("Effekte, Lüfterkurve und Automatik laufen nur, solange die App läuft.", "Effects, fan curve and automation only run while the app is running.")));
-        s.Children.Add(Ui.Switch(Loc.T("Tastenkürzel für Szenen (Strg+Alt+0…9)", "Scene hotkeys (Ctrl+Alt+0…9)"), g.SceneHotkeys, v => { g.SceneHotkeys = v; Cc.Store.SaveSoon(); },
+        s.Children.Add(Ui.Switch(Loc.T("Tastenkürzel für Szenen (Strg+Alt+Umschalt+0…9)", "Scene hotkeys (Ctrl+Alt+Shift+0…9)"), g.SceneHotkeys, v => { g.SceneHotkeys = v; Cc.Store.SaveSoon(); },
             Loc.T("Wirkt nach Neustart der App", "Takes effect after restarting the app")));
         s.Children.Add(Ui.Switch(Loc.T("Lüfter beim Beenden auf Automatik", "Set fans to automatic on exit"), g.RestoreAutoFanOnExit, v => { g.RestoreAutoFanOnExit = v; Cc.Store.SaveSoon(); }));
         s.Children.Add(Ui.Row(Loc.T("Sprache", "Language"), Ui.Combo(new[] { ("auto", Loc.T("Automatisch", "Automatic")), ("de", "Deutsch"), ("en", "English") }, g.Language,

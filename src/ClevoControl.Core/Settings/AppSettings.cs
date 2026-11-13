@@ -199,7 +199,7 @@ public sealed class GeneralSettings
     public bool CloseToTray { get; set; } = true;
     /// <summary>"auto", "de" or "en".</summary>
     public string Language { get; set; } = "auto";
-    public bool SceneHotkeys { get; set; } = true;
+    public bool SceneHotkeys { get; set; }
     public bool RestoreAutoFanOnExit { get; set; } = true;
     /// <summary>Block the Windows key (gaming mode).</summary>
     public bool WinKeyLock { get; set; }

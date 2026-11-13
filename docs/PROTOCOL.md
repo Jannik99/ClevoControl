@@ -61,14 +61,16 @@ Switching to max and back to auto (`0x01000001` → `0x01000000`) resets it reli
 
 ## Performance profile – command `0x79`, sub-command `0x19`
 
-Argument `0x190000VV`. Clevo's UI index → EC value (from Clevo's Fn-key app):
+Argument `0x190000VV`, where `VV` is simply Clevo's UI index (verified from the IL of Clevo's Fn-key app):
 
-| Profile | UI index (`ReadAppSettings(1, 1)`) | EC value |
-|---|---|---|
-| Quiet | 0 | 3 |
-| Power saving | 1 | 1 |
-| Performance | 2 | 0 |
-| Entertainment (default) | 3 | 2 |
+| Profile | UI index (`ReadAppSettings(1, 1)`) = EC value |
+|---|---|
+| Quiet | 0 |
+| Power saving | 1 |
+| Performance | 2 (Clevo adds `0x80` when "turbo fan" is enabled, `0x40` for an unknown model option) |
+| Entertainment | 3 |
+
+> ClevoControl 0.1.0 used a wrong, permuted mapping (Performance was sent as Quiet). Fixed in 0.1.1.
 
 Clevo's apps also store the UI index with `WriteAppSettings(1, 1, 1, …)`; ClevoControl does the same so both stay in sync.
 

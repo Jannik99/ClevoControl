@@ -217,14 +217,15 @@ public partial class App : Application
         _cc.ApplyKeyboard();
     }
 
-    // Ctrl+Alt+1..9 = scenes, Ctrl+Alt+0 = keyboard light on/off
+    // Ctrl+Alt+Shift+1..9 = scenes, Ctrl+Alt+Shift+0 = keyboard light on/off.
+    // Plain Ctrl+Alt is NOT used: on German and many other layouts AltGr == Ctrl+Alt (², ³, {, [, ], }).
     private void RegisterHotkeys()
     {
         if (_cc is null || !_cc.Settings.General.SceneHotkeys) return;
         var p = new HwndSourceParameters("ClevoControlHotkeys") { Width = 0, Height = 0, ParentWindow = new IntPtr(-3) };
         _hotkeySource = new HwndSource(p);
         _hotkeySource.AddHook(HotkeyHook);
-        const uint ctrlAlt = 0x0002 | 0x0001 | 0x4000; // MOD_CONTROL | MOD_ALT | MOD_NOREPEAT
+        const uint ctrlAlt = 0x0002 | 0x0001 | 0x0004 | 0x4000; // MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT
         for (var i = 0; i <= 9; i++) RegisterHotKey(_hotkeySource.Handle, 100 + i, ctrlAlt, (uint)(0x30 + i));
     }
 

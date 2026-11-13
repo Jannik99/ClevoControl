@@ -166,3 +166,15 @@ public class OpenRgbServerTests
         Assert.Equal(new RgbColor(0x99, 0x66, 0x33), color);
     }
 }
+
+public class ProfileMappingTests
+{
+    // Regression test for the 0.1.0 bug where Performance was sent to the EC as Quiet.
+    [Theory]
+    [InlineData(PerformanceProfile.Quiet, 0u)]
+    [InlineData(PerformanceProfile.PowerSaving, 1u)]
+    [InlineData(PerformanceProfile.Performance, 2u)]
+    [InlineData(PerformanceProfile.Entertainment, 3u)]
+    public void Ec_value_equals_clevo_ui_index(PerformanceProfile p, uint ec) =>
+        Assert.Equal(ec, ClevoControl.Core.Hardware.ClevoHardware.ProfileToEc(p));
+}

@@ -13,8 +13,8 @@ public sealed class ScenesPage(ControlCenter cc) : AppPage(cc)
     {
         var root = new StackPanel();
         root.Children.Add(Ui.PageTitle(Loc.T("Szenen", "Scenes")));
-        root.Children.Add(Ui.PageSubtitle(Loc.T("Speichere Licht, Lüfter, Leistung und Lautstärke als Szene und schalte sie per Klick, Tray-Menü oder Strg+Alt+1…9 um. Strg+Alt+0 schaltet das Tastaturlicht an/aus.",
-            "Save light, fans, performance and volume as a scene and switch via click, tray menu or Ctrl+Alt+1…9. Ctrl+Alt+0 toggles the keyboard light.")));
+        root.Children.Add(Ui.PageSubtitle(Loc.T("Speichere Licht, Lüfter, Leistung und Lautstärke als Szene und schalte sie per Klick, Tray-Menü oder Strg+Alt+Umschalt+1…9 um. Strg+Alt+Umschalt+0 schaltet das Tastaturlicht an/aus.",
+            "Save light, fans, performance and volume as a scene and switch via click, tray menu or Ctrl+Alt+Shift+1…9. Ctrl+Alt+Shift+0 toggles the keyboard light.")));
 
         var name = new TextBox { Width = 220, Text = Loc.T("Meine Szene", "My scene") };
         var icon = Ui.Combo(new[] { "★", "🎬", "🎮", "🎵", "💼", "🌙", "🔋", "☕", "📚", "🎧", "🔥", "❄" }.Select(i => (i, i)), "★", _ => { }, 70);
@@ -62,7 +62,7 @@ public sealed class ScenesPage(ControlCenter cc) : AppPage(cc)
             if (scene.Profile is { } p) parts.Add(PowerPage.ProfileName(p));
             if (scene.FanMode is { } f) parts.Add(Loc.T("Lüfter: ", "Fans: ") + FansPage.ModeName(f));
             if (scene.Volume is { } v) parts.Add(Loc.T("Lautstärke ", "Volume ") + v + " %");
-            var left = Ui.Stack(Ui.Text($"{scene.Icon}  {scene.Name}" + (i < 9 ? $"   ·   Ctrl+Alt+{i + 1}" : ""), 15, true), Ui.Text(string.Join("  ·  ", parts), 12.5, sub: true));
+            var left = Ui.Stack(Ui.Text($"{scene.Icon}  {scene.Name}" + (i < 9 ? $"   ·   Ctrl+Alt+Shift+{i + 1}" : ""), 15, true), Ui.Text(string.Join("  ·  ", parts), 12.5, sub: true));
             g.Children.Add(left);
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             buttons.Children.Add(Ui.Button(Loc.T("Anwenden", "Apply"), () => Cc.ApplyScene(scene), accent: true));

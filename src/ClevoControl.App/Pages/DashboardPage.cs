@@ -46,7 +46,7 @@ public sealed class DashboardPage(ControlCenter cc) : AppPage(cc)
         {
             var scene = s;
             var b = Ui.Button($"{scene.Icon}  {scene.Name}", () => { Cc.ApplyScene(scene); ((MainWindow)Application.Current.MainWindow!).Navigate("dashboard"); });
-            if (i <= 9 && Cc.Settings.General.SceneHotkeys) b.ToolTip = $"Ctrl+Alt+{i}";
+            if (i <= 9 && Cc.Settings.General.SceneHotkeys) b.ToolTip = $"Ctrl+Alt+Shift+{i}";
             i++;
             scenes.Children.Add(b);
         }

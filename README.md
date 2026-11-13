@@ -28,7 +28,7 @@
 | **Other RGB software** | Built-in **OpenRGB SDK server** → Artemis, Aurora and other OpenRGB clients (and their game plugins) can drive the keyboard |
 | **Fans** | Live RPM/duty/temperatures, auto / max / **custom fan curve** with a hard-coded safety net |
 | **Performance** | Clevo profiles (Quiet, Power saving, Performance, Entertainment), Windows power mode, automatic AC/battery switching, lower refresh rate on battery |
-| **More** | Battery health & cycle count, volume / mute / mic mute / output device, Windows-key lock, scenes with hotkeys (Ctrl+Alt+1…9), tray menu, autostart, light & dark mode, German & English |
+| **More** | Battery health & cycle count, volume / mute / mic mute / output device, Windows-key lock, scenes with hotkeys (Ctrl+Alt+Shift+1…9, opt-in), tray menu, autostart, light & dark mode, German & English |
 | **Scripting** | Local HTTP API (127.0.0.1 only) and the `clevoctl` command-line tool |
 
 <p>
@@ -52,7 +52,7 @@ Without the driver, the app starts in **simulation mode** so you can still look 
 
 | Model | Keyboard | Status |
 |---|---|---|
-| Clevo N9x0TD_TF (N950TD/N960TF) | 1-zone RGB | ✅ colors, brightness, sensors, fan modes, local API · ⏳ hardware effects and profile mapping still being confirmed |
+| Clevo N9x0TD_TF (N950TD/N960TF) | 1-zone RGB | ✅ colors, brightness, sensors, fan modes, performance profiles (fixed in 0.1.1), local API · ⏳ hardware effects still being confirmed |
 
 Other Clevo models using the same InsydeDCHU interface (many sold as Schenker/XMG, Tuxedo, System76, Medion Erazer, Eurocom, PCSpecialist …) will probably work as well. 3-zone keyboards are supported as one color, per-key keyboards are not supported yet.
 **Please report your model** in an issue (include the output of `clevoctl dump`).
@@ -141,7 +141,7 @@ Issues and pull requests are welcome – especially reports from other Clevo mod
 * Lüfter: Live-Werte, Auto, Max oder **eigene Lüfterkurve mit Sicherheitsnetz**
 * Leistungsprofile, Windows-Energiemodus, automatischer Wechsel bei Akku oder Netzteil, niedrigere Bildwiederholrate im Akkubetrieb
 * Akku-Gesundheit, Sound (Lautstärke, Stummschaltung, Mikrofon, Ausgabegerät), Windows-Taste sperren
-* Szenen mit Tastenkürzeln (Strg+Alt+1…9), Tray-Menü, Autostart, Hell- und Dunkelmodus
+* Szenen mit Tastenkürzeln (Strg+Alt+Umschalt+1…9, optional), Tray-Menü, Autostart, Hell- und Dunkelmodus
 * Lokale HTTP-Schnittstelle und Kommandozeilen-Tool `clevoctl`
 
 **Voraussetzung:** Der Clevo-Control-Center-Treiber (`InsydeDCHU.dll`) muss installiert sein. Er wird nicht mitgeliefert.
