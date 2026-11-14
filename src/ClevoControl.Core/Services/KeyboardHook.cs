@@ -28,6 +28,7 @@ public sealed class KeyboardHook : IDisposable
     private readonly Thread _thread;
     private uint _threadId;
     private IntPtr _hook;
+    private readonly HashSet<int> _held = []; // only touched on the hook thread
 
     public KeyboardHook()
     {
@@ -65,7 +66,15 @@ public sealed class KeyboardHook : IDisposable
             {
                 try { if (f(vk, down)) return 1; } catch { }
             }
-            if (down) KeyPressed?.Invoke();
+            // Auto-repeat while a key is held sends more key-downs: only the first press counts.
+            if (down)
+            {
+                if (_held.Add(vk)) KeyPressed?.Invoke();
+            }
+            else
+            {
+                _held.Remove(vk);
+            }
         }
         return CallNextHookEx(_hook, code, wParam, lParam);
     }

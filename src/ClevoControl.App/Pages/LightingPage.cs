@@ -25,13 +25,13 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
         LightingEffectKind.Gradient => Loc.T("Farbverlauf", "Gradient"),
         LightingEffectKind.Candle => Loc.T("Kerze", "Candle"),
         LightingEffectKind.Daylight => Loc.T("Tageslicht", "Daylight"),
-        LightingEffectKind.Ambient => Loc.T("Ambilight", "Ambient light"),
+        LightingEffectKind.Ambient => Loc.T("Bildschirmfarbe", "Screen color"),
         LightingEffectKind.Music => Loc.T("Musik", "Music"),
         LightingEffectKind.Temperature => Loc.T("Temperatur", "Temperature"),
         LightingEffectKind.Battery => Loc.T("Akkustand", "Battery level"),
         LightingEffectKind.ScreenRegion => Loc.T("Lebensleiste", "Health bar"),
         LightingEffectKind.GameCs2 => "Counter-Strike 2",
-        LightingEffectKind.Reactive => Loc.T("Tipp-Reaktiv", "Reactive typing"),
+        LightingEffectKind.Reactive => Loc.T("Tastendruck", "Key press"),
         LightingEffectKind.CpuLoad => Loc.T("CPU-Last", "CPU load"),
         LightingEffectKind.OnAir => "On Air",
         LightingEffectKind.Pomodoro => "Pomodoro",
@@ -39,7 +39,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
         LightingEffectKind.Lava => Loc.T("Lavalampe", "Lava lamp"),
         LightingEffectKind.Fire => Loc.T("Feuer", "Fire"),
         LightingEffectKind.Police => Loc.T("Polizei", "Police"),
-        LightingEffectKind.Hardware => Loc.T("Hardware-Effekt", "Hardware effect"),
+        LightingEffectKind.Hardware => Loc.T("Eingebaute Effekte", "Built-in effects"),
         LightingEffectKind.Off => Loc.T("Aus", "Off"),
         _ => e.ToString(),
     };
@@ -58,7 +58,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
         LightingEffectKind.Battery => (Icons.Battery, Loc.T("Zeigt Ladestand", "Shows charge")),
         LightingEffectKind.ScreenRegion => (Icons.Heart, Loc.T("Für jedes Spiel", "For any game")),
         LightingEffectKind.GameCs2 => (Icons.Target, Loc.T("Leben, Flash, Bombe", "Health, flash, bomb")),
-        LightingEffectKind.Reactive => (Icons.Keyboard, Loc.T("Leuchtet beim Tippen", "Lights up on keys")),
+        LightingEffectKind.Reactive => (Icons.Keyboard, Loc.T("Leuchtet beim Drücken auf", "Lights up on key press")),
         LightingEffectKind.CpuLoad => (Icons.Diagnostic, Loc.T("Blau → Rot", "Blue → red")),
         LightingEffectKind.OnAir => (Icons.Broadcast, Loc.T("Rot bei Mikrofon", "Red when mic in use")),
         LightingEffectKind.Pomodoro => (Icons.Timer, Loc.T("Fokus-Timer", "Focus timer")),
@@ -66,7 +66,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
         LightingEffectKind.Lava => (Icons.Layers, Loc.T("Langsames Wabern", "Slow drift")),
         LightingEffectKind.Fire => (Icons.Fire, Loc.T("Lodernde Flammen", "Blazing flames")),
         LightingEffectKind.Police => (Icons.Bell, Loc.T("Rot/Blau-Blitzer", "Red/blue strobe")),
-        LightingEffectKind.Hardware => (Icons.Chip, Loc.T("Läuft im Controller", "Runs in the EC")),
+        LightingEffectKind.Hardware => (Icons.Chip, Loc.T("Läuft auch ohne App", "Runs without the app")),
         LightingEffectKind.Off => (Icons.Power, Loc.T("Beleuchtung aus", "Light off")),
         _ => (Icons.Circle, ""),
     };
@@ -75,7 +75,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
     {
         var root = new StackPanel();
         root.Children.Add(Ui.PageTitle(Loc.T("Beleuchtung", "Lighting")));
-        root.Children.Add(Ui.PageSubtitle(Loc.T("Freie RGB-Farbe, stufenlose Helligkeit und viele Effekte.", "Free RGB color, stepless brightness and lots of effects.")
+        root.Children.Add(Ui.PageSubtitle(Loc.T("Farbe, Helligkeit und Effekte deiner Tastaturbeleuchtung.", "Color, brightness and effects of your keyboard light.")
             + (Cc.Hardware.KeyboardType == KeyboardType.SingleZoneRgb ? Loc.T(" Deine Tastatur hat eine Zone – alle Tasten leuchten in derselben Farbe.", " Your keyboard has one zone – all keys share one color.") : "")));
 
         // Preview
@@ -93,19 +93,31 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
         _timer.Start();
 
         // Effects gallery
-        var gallery = new WrapPanel();
-        foreach (var e in Enum.GetValues<LightingEffectKind>())
+        var gallery = new StackPanel();
+        void AddGroup(string title, params LightingEffectKind[] kinds)
         {
-            var effect = e;
-            var (icon, desc) = EffectInfo(e);
-            gallery.Children.Add(Ui.Tile(icon, EffectName(e), desc, Kb.Effect == e, "effect", () =>
+            var header = Ui.Section(title);
+            if (gallery.Children.Count > 0) header.Margin = new Thickness(0, 12, 0, 8);
+            gallery.Children.Add(header);
+            var wrap = new WrapPanel();
+            foreach (var e in kinds)
             {
-                Kb.Effect = effect;
-                Kb.Enabled = true;
-                Cc.ApplyKeyboard();
-                _options!.Content = BuildOptions();
-            }, 150));
+                var effect = e;
+                var (icon, desc) = EffectInfo(e);
+                wrap.Children.Add(Ui.Tile(icon, EffectName(e), desc, Kb.Effect == e, "effect", () =>
+                {
+                    Kb.Effect = effect;
+                    Kb.Enabled = true;
+                    Cc.ApplyKeyboard();
+                    _options!.Content = BuildOptions();
+                }, 150));
+            }
+            gallery.Children.Add(wrap);
         }
+        AddGroup(Loc.T("Grundlagen", "Basics"), LightingEffectKind.Static, LightingEffectKind.Breathing, LightingEffectKind.Spectrum, LightingEffectKind.Gradient, LightingEffectKind.Hardware);
+        AddGroup(Loc.T("Stimmung", "Ambience"), LightingEffectKind.Candle, LightingEffectKind.Daylight, LightingEffectKind.Lava, LightingEffectKind.Fire, LightingEffectKind.Heartbeat, LightingEffectKind.Police);
+        AddGroup(Loc.T("Reagiert auf …", "Reacts to …"), LightingEffectKind.Ambient, LightingEffectKind.Music, LightingEffectKind.Reactive, LightingEffectKind.Temperature, LightingEffectKind.CpuLoad, LightingEffectKind.Battery, LightingEffectKind.OnAir, LightingEffectKind.Pomodoro);
+        AddGroup(Loc.T("Spiele", "Games"), LightingEffectKind.ScreenRegion, LightingEffectKind.GameCs2);
         root.Children.Add(Ui.Card(gallery, Loc.T("Effekt", "Effect")));
 
         // Color + options side by side
@@ -118,7 +130,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
         var right = new StackPanel();
         right.Children.Add(Ui.Card(Ui.Stack(
             Ui.Switch(Loc.T("Beleuchtung an", "Light on"), Kb.Enabled, on => { Kb.Enabled = on; Cc.ApplyKeyboard(); }),
-            Ui.SliderRow(Loc.T("Helligkeit (Hardware)", "Brightness (hardware)"), 0, 100, Kb.Brightness, v => { Kb.Brightness = (int)v; Cc.ApplyKeyboard(); }, v => $"{v:0} %"),
+            Ui.SliderRow(Loc.T("Helligkeit", "Brightness"), 0, 100, Kb.Brightness, v => { Kb.Brightness = (int)v; Cc.ApplyKeyboard(); }, v => $"{v:0} %"),
             Ui.Row(Loc.T("Aus bei Inaktivität", "Off when idle"),
                 Ui.Combo(new[] { 0, 1, 2, 5, 10, 15, 30, 60 }.Select(m => (m, m == 0 ? Loc.T("nie", "never") : $"{m} min")), Kb.IdleTimeoutMinutes,
                     m => { Kb.IdleTimeoutMinutes = m; Cc.ApplyKeyboard(); }, 120),
@@ -168,7 +180,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
         secondary.ColorChanged += c => { Kb.SecondaryColor = c; Cc.ApplyKeyboard(); };
         var expander = new Expander
         {
-            Header = Ui.Text(Loc.T("Zweitfarbe (Farbverlauf, Tipp-Reaktiv)", "Second color (gradient, reactive)"), 13, sub: true),
+            Header = Ui.Text(Loc.T("Zweite Farbe (Farbverlauf, Tastendruck)", "Second color (gradient, key press)"), 13, sub: true),
             Content = secondary,
             Margin = new Thickness(0, 12, 0, 0),
 
@@ -194,8 +206,8 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
             case LightingEffectKind.Reactive:
                 s.Children.Add(Speed());
                 if (Kb.Effect == LightingEffectKind.Reactive)
-                    s.Children.Add(Ui.Text(Loc.T("Grundfarbe = Farbe (gedimmt), Aufleuchten = Zweitfarbe. Sind beide gleich, wechselt die Farbe bei jedem Tastendruck.",
-                        "Base = color (dimmed), flash = second color. If both are equal, the color changes with every key press."), 12, sub: true));
+                    s.Children.Add(Ui.Text(Loc.T("Grundfarbe = deine Farbe (gedimmt), Aufleuchten = zweite Farbe. Sind beide gleich, wechselt die Farbe bei jedem Tastendruck. Gedrückt halten löst nur einmal aus.",
+                        "Base = your color (dimmed), flash = second color. If both are equal, the color changes with every key press. Holding a key only triggers once."), 12, sub: true));
                 break;
 
             case LightingEffectKind.Ambient:
@@ -205,7 +217,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
                     Kb.AmbientMonitor, i => { Kb.AmbientMonitor = i; Cc.ApplyKeyboard(); }, 180)));
                 s.Children.Add(Ui.SliderRow(Loc.T("Farbverstärkung", "Saturation boost"), 0.5, 3, Kb.AmbientSaturationBoost, v => { Kb.AmbientSaturationBoost = v; Cc.ApplyKeyboard(); }, v => $"{v:0.0}×", 0.1));
                 s.Children.Add(Ui.SliderRow(Loc.T("Glättung", "Smoothing"), 0, 0.95, Kb.AmbientSmoothing, v => { Kb.AmbientSmoothing = v; Cc.ApplyKeyboard(); }, v => $"{v * 100:0} %", 0.05));
-                s.Children.Add(Ui.SliderRow("FPS", 5, 60, Kb.AmbientFps, v => { Kb.AmbientFps = (int)v; Cc.ApplyKeyboard(); }));
+                s.Children.Add(Ui.SliderRow(Loc.T("Bildrate", "Frame rate"), 5, 60, Kb.AmbientFps, v => { Kb.AmbientFps = (int)v; Cc.ApplyKeyboard(); }));
                 s.Children.Add(Ui.Text(Loc.T("Hinweis: Kopiergeschützte Streams (z. B. Netflix in Edge) zeigen der Bildschirmaufnahme oft nur Schwarz.",
                     "Note: copy-protected streams (e.g. Netflix in Edge) often appear black to screen capture."), 12, sub: true));
                 break;
@@ -247,15 +259,15 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
 
             case LightingEffectKind.ScreenRegion:
             case LightingEffectKind.GameCs2:
-                s.Children.Add(Ui.Text(Loc.T("Einstellungen dazu findest du unter „Spiele & Apps“.", "You find the settings under “Games & apps”."), 12.5, sub: true, bottom: 10));
-                s.Children.Add(Ui.Button(Loc.T("Zu Spiele & Apps", "Open Games & apps"), () => ((MainWindow)Application.Current.MainWindow!).Navigate("games")));
+                s.Children.Add(Ui.Text(Loc.T("Die Einstellungen dazu findest du unter „Spiele & Integrationen“.", "Settings are under “Games & integrations”."), 12.5, sub: true, bottom: 10));
+                s.Children.Add(Ui.Button(Loc.T("Zu Spiele & Integrationen", "Open Games & integrations"), () => ((MainWindow)Application.Current.MainWindow!).Navigate("games")));
                 break;
 
             case LightingEffectKind.Hardware:
                 s.Children.Add(Ui.Row(Loc.T("Effekt", "Effect"), Ui.Combo(Enum.GetValues<HardwareEffect>().Select(h => (h, HardwareEffectName(h))), Kb.HardwareEffect,
                     h => { Kb.HardwareEffect = h; Cc.ApplyKeyboard(); }, 180)));
-                s.Children.Add(Ui.Text(Loc.T("Diese Effekte berechnet der Tastatur-Controller selbst – null CPU-Last, laufen sogar ohne die App weiter. Geschwindigkeit und Farben legt die Firmware fest.",
-                    "These effects run inside the keyboard controller – zero CPU load, they even keep running without the app. Speed and colors are fixed by the firmware."), 12, sub: true));
+                s.Children.Add(Ui.Text(Loc.T("Diese Effekte berechnet die Tastatur selbst – keine CPU-Last, sie laufen auch ohne die App. Tempo und Farben legt die Firmware fest.",
+                    "The keyboard computes these effects itself – no CPU load, they even run without the app. Speed and colors are set by the firmware."), 12, sub: true));
                 break;
 
             default:
@@ -284,9 +296,10 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
         s.Children.Add(Ui.SliderRow(Loc.T("Blau", "Blue"), 0.3, 1, Kb.GainBlue, v => { Kb.GainBlue = v; Cc.ApplyKeyboard(); }, v => $"{v * 100:0} %", 0.01, Ui.Gradient(Colors.Black, Color.FromRgb(40, 120, 255))));
         s.Children.Add(Ui.Wrap(
             Ui.Button(Loc.T("Weiß testen", "Test white"), () => Cc.Lighting.Override(RgbColor.White, TimeSpan.FromSeconds(8))),
-            Ui.Button(Loc.T("Standard", "Default"), () => { Kb.GainRed = 0.71; Kb.GainGreen = 1; Kb.GainBlue = 0.78; Cc.ApplyKeyboard(); ((MainWindow)Application.Current.MainWindow!).Navigate("lighting"); }),
-            Ui.Button(Loc.T("Aus (100 %)", "Off (100 %)"), () => { Kb.GainRed = 1; Kb.GainGreen = 1; Kb.GainBlue = 1; Cc.ApplyKeyboard(); ((MainWindow)Application.Current.MainWindow!).Navigate("lighting"); })));
-        return Ui.Card(s, Loc.T("Weißabgleich", "White balance"),
+            Ui.Button(Loc.T("Empfohlen", "Recommended"), () => { Kb.GainRed = 0.71; Kb.GainGreen = 1; Kb.GainBlue = 0.78; Cc.ApplyKeyboard(); ((MainWindow)Application.Current.MainWindow!).Navigate("lighting"); }),
+            Ui.Button(Loc.T("Ohne Korrektur", "No correction"), () => { Kb.GainRed = 1; Kb.GainGreen = 1; Kb.GainBlue = 1; Cc.ApplyKeyboard(); ((MainWindow)Application.Current.MainWindow!).Navigate("lighting"); })));
+        var wbExpander = new Expander { Header = Ui.Text(Loc.T("Erweitert: Weißabgleich", "Advanced: white balance"), 14, true), Content = s, IsExpanded = false };
+        return Ui.Card(wbExpander, Loc.T("Weißabgleich", "White balance"),
             Loc.T("Die LEDs sind ab Werk rot- und blaustichig. Stell die Regler so ein, dass „Weiß testen“ wirklich weiß aussieht – dann stimmen alle Farben.",
                   "The LEDs are red/blue-heavy from the factory. Adjust until “Test white” looks truly white – then all colors are accurate."));
     }

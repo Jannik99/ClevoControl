@@ -85,6 +85,9 @@ public sealed class KeyRemapService
             ["VolumeUp"] = 0xAF, ["VolumeDown"] = 0xAE, ["VolumeMute"] = 0xAD, ["Mute"] = 0xAD,
             ["MediaPlayPause"] = 0xB3, ["PlayPause"] = 0xB3, ["MediaNext"] = 0xB0, ["MediaPrev"] = 0xB1, ["MediaStop"] = 0xB2,
             ["Calculator"] = 0xB7, ["Mail"] = 0xB4, ["BrowserHome"] = 0xAC,
+            // German layout (OEM) keys – names without "+" so shortcuts stay parseable
+            ["Plus"] = 0xBB, ["Minus"] = 0xBD, ["Komma"] = 0xBC, ["Punkt"] = 0xBE, ["Raute"] = 0xBF, ["Ü"] = 0xBA, ["Ö"] = 0xC0,
+            ["Ä"] = 0xDE, ["ß"] = 0xDB, ["Zirkumflex"] = 0xDC, ["Akut"] = 0xDD, ["Kleiner"] = 0xE2,
             ["Num0"] = 0x60, ["Num1"] = 0x61, ["Num2"] = 0x62, ["Num3"] = 0x63, ["Num4"] = 0x64, ["Num5"] = 0x65, ["Num6"] = 0x66,
             ["Num7"] = 0x67, ["Num8"] = 0x68, ["Num9"] = 0x69, ["NumMultiply"] = 0x6A, ["NumAdd"] = 0x6B, ["NumSubtract"] = 0x6D,
             ["NumDecimal"] = 0x6E, ["NumDivide"] = 0x6F,

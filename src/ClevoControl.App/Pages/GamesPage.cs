@@ -20,12 +20,12 @@ public sealed class GamesPage(ControlCenter cc) : AppPage(cc)
     public override UIElement Build()
     {
         var root = new StackPanel();
-        root.Children.Add(Ui.PageTitle(Loc.T("Spiele & Apps", "Games & apps")));
+        root.Children.Add(Ui.PageTitle(Loc.T("Spiele & Integrationen", "Games & integrations")));
         root.Children.Add(Ui.PageSubtitle(Loc.T("Die Tastatur zeigt Leben, Mana & Co. – oder andere Programme steuern sie.", "The keyboard shows health, mana & co. – or other programs control it.")));
 
-        root.Children.Add(HealthDisplayCard());
         root.Children.Add(RegionCard());
         root.Children.Add(Cs2Card());
+        root.Children.Add(HealthDisplayCard());
         root.Children.Add(OpenRgbCard());
         root.Children.Add(ApiCard());
 
@@ -53,7 +53,7 @@ public sealed class GamesPage(ControlCenter cc) : AppPage(cc)
             (HealthDisplay.Both, Loc.T("Farbton + Helligkeit", "Hue + brightness")),
         }, Kb.HealthDisplay, h => { Kb.HealthDisplay = h; Cc.ApplyKeyboard(); }, 330);
         return Ui.Card(Ui.Stack(Ui.Row(Loc.T("Darstellung", "Display"), combo, Loc.T("Gilt für Lebensleiste und CS2. Bei wenig Leben pulsiert die Tastatur zusätzlich.", "Applies to health bar and CS2. At low health the keyboard pulses as well."), 0)),
-            Loc.T("Lebensanzeige", "Health display"));
+            Loc.T("Darstellung der Lebensanzeige", "Health display style"));
     }
 
     private Border RegionCard()
@@ -119,14 +119,14 @@ public sealed class GamesPage(ControlCenter cc) : AppPage(cc)
         colorRow.Margin = new Thickness(0, 4, 0, 14);
         s.Children.Add(colorRow);
 
-        s.Children.Add(Ui.Row(Loc.T("Auswertung", "Analysis"), Ui.Combo(new[]
+        s.Children.Add(Ui.Row(Loc.T("Erkennen", "Detect"), Ui.Combo(new[]
         {
             (RegionMode.BarFill, Loc.T("Füllstand einer Leiste", "Fill level of a bar")),
             (RegionMode.AreaColor, Loc.T("Farbe des Bereichs übernehmen", "Copy the area's color")),
         }, r.Mode, m => { r.Mode = m; Cc.ApplyKeyboard(); }, 240)));
         s.Children.Add(Ui.Switch(Loc.T("Senkrechte Leiste", "Vertical bar"), r.VerticalBar, v => { r.VerticalBar = v; Cc.ApplyKeyboard(); }, Loc.T("Füllt sich von unten nach oben", "Fills from bottom to top")));
         s.Children.Add(Ui.SliderRow(Loc.T("Farbtoleranz", "Color tolerance"), 0.05, 0.8, r.Tolerance, v => { r.Tolerance = v; Cc.ApplyKeyboard(); }, v => $"{v * 100:0} %", 0.01));
-        s.Children.Add(Ui.SliderRow(Loc.T("Warnung unter", "Warn below"), 0, 60, r.WarnBelowPercent, v => { r.WarnBelowPercent = (int)v; Cc.ApplyKeyboard(); }, v => $"{v:0} %"));
+        s.Children.Add(Ui.SliderRow(Loc.T("Pulsieren unter", "Pulse below"), 0, 60, r.WarnBelowPercent, v => { r.WarnBelowPercent = (int)v; Cc.ApplyKeyboard(); }, v => $"{v:0} %"));
 
         var fullPick = new ColorPicker(r.FullColor);
         fullPick.ColorChanged += c => { r.FullColor = c; Cc.ApplyKeyboard(); };
@@ -156,7 +156,7 @@ public sealed class GamesPage(ControlCenter cc) : AppPage(cc)
                 : Cc.Cs2.Error is { } err ? Loc.T("Fehler: ", "Error: ") + err
                 : st is null || DateTime.UtcNow - st.Received > TimeSpan.FromSeconds(20)
                     ? Loc.T($"Warte auf CS2 (Port {G.Cs2Port}) …", $"Waiting for CS2 (port {G.Cs2Port}) …")
-                    : Loc.T($"Verbunden – Leben {st.Health}, Rüstung {st.Armor}", $"Connected – health {st.Health}, armor {st.Armor}") + (st.Bomb is { } b ? $", Bomb: {b}" : "");
+                    : Loc.T($"Verbunden – Leben {st.Health}, Rüstung {st.Armor}", $"Connected – health {st.Health}, armor {st.Armor}") + (st.Bomb is { } b ? Loc.T($", Bombe: {b}", $", Bomb: {b}") : "");
         });
         s.Children.Add(Ui.Text(Loc.T("Nutzt Valves offizielle „Game State Integration“: CS2 meldet Leben, Blendung, Feuer und Bombe selbst an die App. Kein Eingriff ins Spiel, VAC-sicher.",
             "Uses Valve's official “Game State Integration”: CS2 reports health, flash, fire and bomb to the app itself. No game modification, VAC-safe."), 12.5, sub: true, bottom: 12));
@@ -187,9 +187,9 @@ public sealed class GamesPage(ControlCenter cc) : AppPage(cc)
             Cc.IntegrationError is { } e && e.StartsWith("OpenRGB") ? e :
             Loc.T($"Läuft auf 127.0.0.1:{G.OpenRgbPort} · {Cc.OpenRgbClients} Client(s) verbunden", $"Running on 127.0.0.1:{G.OpenRgbPort} · {Cc.OpenRgbClients} client(s) connected"));
         s.Children.Add(Ui.Switch(Loc.T("OpenRGB-Server aktivieren", "Enable OpenRGB server"), G.OpenRgbServerEnabled, on => { G.OpenRgbServerEnabled = on; Cc.ApplyKeyboard(); },
-            Loc.T("Deine Tastatur erscheint als Gerät in Artemis, Aurora, SignalRGB-Alternativen & Co.", "Your keyboard shows up as a device in Artemis, Aurora & co.")));
+            Loc.T("Deine Tastatur erscheint als Gerät in Artemis, Aurora & Co.","Your keyboard shows up as a device in Artemis, Aurora & co.")));
         s.Children.Add(Ui.Row(Loc.T("Port", "Port"), PortBox(G.OpenRgbPort, p => { G.OpenRgbPort = p; Cc.ApplyKeyboard(); }), Loc.T("Standard 6742. Läuft das echte OpenRGB parallel, einen anderen Port nehmen.", "Default 6742. If the real OpenRGB is running too, pick another port.")));
-        s.Children.Add(Ui.SliderRow(Loc.T("Externe Farbe hält", "External color holds"), 1, 30, G.ExternalHoldSeconds, v => { G.ExternalHoldSeconds = (int)v; Cc.ApplyKeyboard(); }, v => $"{v:0} s"));
+        s.Children.Add(Ui.SliderRow(Loc.T("Zurück zu deinem Effekt nach", "Return to your effect after"), 1, 30, G.ExternalHoldSeconds, v => { G.ExternalHoldSeconds = (int)v; Cc.ApplyKeyboard(); }, v => $"{v:0} s"));
         s.Children.Add(Ui.Text(Loc.T("So geht's: In Artemis/Aurora ein „OpenRGB“-Gerät hinzufügen (Host 127.0.0.1, obiger Port). Deren Spiel-Plugins (Dota 2, GTA V, Minecraft, LoL, Euro Truck Simulator …) steuern dann deine Tastatur. Sendet niemand mehr, läuft wieder dein eigener Effekt.",
             "How to: add an “OpenRGB” device in Artemis/Aurora (host 127.0.0.1, port above). Their game plugins (Dota 2, GTA V, Minecraft, LoL, Euro Truck Simulator …) then control your keyboard. When nobody sends anymore, your own effect resumes."), 12, sub: true, bottom: 8));
         s.Children.Add(status);
@@ -217,14 +217,30 @@ public sealed class GamesPage(ControlCenter cc) : AppPage(cc)
         return Ui.Card(s, Loc.T("Eigene Skripte & Mods", "Your own scripts & mods"), icon: Icons.Code);
     }
 
-    private static TextBox PortBox(int value, Action<int> changed)
+    private static StackPanel PortBox(int value, Action<int> changed)
     {
-        var t = new TextBox { Text = value.ToString(), Width = 90 };
+        var t = new TextBox { Text = value.ToString(), Width = 90, HorizontalAlignment = HorizontalAlignment.Right };
+        var err = Ui.Text(Loc.T("Port muss zwischen 1025 und 65535 liegen.", "Port must be between 1025 and 65535."), 12);
+        err.Foreground = new SolidColorBrush(Color.FromRgb(232, 90, 80));
+        err.Visibility = Visibility.Collapsed;
+        err.MaxWidth = 220;
+        err.HorizontalAlignment = HorizontalAlignment.Right;
+        err.Margin = new Thickness(0, 4, 0, 0);
         t.LostFocus += (_, _) =>
         {
-            if (int.TryParse(t.Text, out var p) && p is > 1024 and < 65536) changed(p);
-            else t.Text = value.ToString();
+            if (int.TryParse(t.Text, out var p) && p is > 1024 and < 65536)
+            {
+                err.Visibility = Visibility.Collapsed;
+                value = p;
+                changed(p);
+            }
+            else
+            {
+                err.Visibility = Visibility.Visible;
+                t.ToolTip = err.Text;
+                t.Text = value.ToString();
+            }
         };
-        return t;
+        return Ui.Stack(t, err);
     }
 }

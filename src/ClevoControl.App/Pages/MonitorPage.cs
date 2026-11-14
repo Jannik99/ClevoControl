@@ -27,9 +27,8 @@ public sealed class MonitorPage(ControlCenter cc) : AppPage(cc)
     public override UIElement Build()
     {
         var root = new StackPanel();
-        root.Children.Add(Ui.PageTitle(Loc.T("Monitor", "Monitor")));
-        root.Children.Add(Ui.PageSubtitle(Loc.T("Detaillierte Werte von Prozessor und Grafikkarte. Die Messung läuft nur, solange diese Seite offen ist.",
-            "Detailed processor and graphics values. Measuring only runs while this page is open.")));
+        root.Children.Add(Ui.PageTitle(Loc.T("Sensoren", "Sensors")));
+        root.Children.Add(Ui.PageSubtitle(Loc.T("Auslastung, Takt und Temperaturen von Prozessor und Grafik im Detail.", "Load, clocks and temperatures of processor and graphics in detail.")));
 
         _cpu = new CpuMonitor();
         root.Children.Add(CpuCard());
@@ -236,8 +235,8 @@ public sealed class MonitorPage(ControlCenter cc) : AppPage(cc)
     private static string EngineName(string type) => type switch
     {
         "3D" => "3D",
-        "VideoDecode" => Loc.T("Video-Decode", "Video decode"),
-        "VideoEncode" => Loc.T("Video-Encode", "Video encode"),
+        "VideoDecode" => Loc.T("Video-Dekodierung", "Video decode"),
+        "VideoEncode" => Loc.T("Video-Kodierung", "Video encode"),
         "VideoProcessing" => Loc.T("Videoverarbeitung", "Video processing"),
         "Copy" => Loc.T("Kopieren", "Copy"),
         "LegacyOverlay" => "Overlay",
@@ -257,7 +256,7 @@ public sealed class MonitorPage(ControlCenter cc) : AppPage(cc)
         grid.Children.Add(BigGraph(Loc.T("GPU-Temperatur", "GPU temperature"), "°C", Red, 30, 100, () => hist().Select(h => (double)h.S.Gpu.TemperatureC).ToList(), margin: true));
         grid.Children.Add(BigGraph(Loc.T("CPU-Lüfter", "CPU fan"), "RPM", Blue, 0, 6000, () => hist().Select(h => (double)h.S.Cpu.Rpm).ToList(), margin: true));
         grid.Children.Add(BigGraph(Loc.T("GPU-Lüfter", "GPU fan"), "RPM", Blue, 0, 6000, () => hist().Select(h => (double)h.S.Gpu.Rpm).ToList(), margin: true));
-        return Ui.Card(grid, Loc.T("Temperaturen & Lüfter (Controller)", "Temperatures & fans (EC)"), icon: Icons.Thermometer);
+        return Ui.Card(grid, Loc.T("Temperaturen & Lüfter", "Temperatures & fans"), icon: Icons.Thermometer);
     }
 
     private sealed record SensorSnapshotView(SensorSnapshot S);

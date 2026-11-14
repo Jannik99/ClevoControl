@@ -226,6 +226,8 @@ public sealed class KeyRemapSettings
 {
     public bool Enabled { get; set; } = true;
     public List<KeyMapping> Mappings { get; set; } = [];
+    /// <summary>Show the number pad on the virtual keyboard (17" models).</summary>
+    public bool ShowNumpad { get; set; }
 }
 
 public sealed class CoolingSettings
@@ -262,6 +264,9 @@ public sealed class GeneralSettings
     public bool RestoreAutoFanOnExit { get; set; } = true;
     /// <summary>Block the Windows key (gaming mode).</summary>
     public bool WinKeyLock { get; set; }
+
+    /// <summary>Quick settings tiles shown on the home page (ids, in order).</summary>
+    public List<string> QuickTiles { get; set; } = ["kblight", "profile", "fanmax", "throttle", "ambient", "winkey", "mute", "micmute"];
 }
 
 public sealed class Scene

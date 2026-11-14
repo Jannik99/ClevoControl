@@ -74,8 +74,8 @@ public partial class App : Application
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
         _window = new MainWindow(_cc);
-        _cc.Overheat += msg => Dispatcher.BeginInvoke(() => _tray?.ShowBalloonTip(5000, Loc.T("ClevoControl – zu heiß!", "ClevoControl – too hot!"),
-            msg + Loc.T(". Tipp: Kühl-Modus unter „Leistung“ oder Lüfter auf Maximum.", ". Tip: cooling mode under “Performance” or fans to maximum."), Forms.ToolTipIcon.Warning));
+        _cc.Overheat += msg => Dispatcher.BeginInvoke(() => _tray?.ShowBalloonTip(5000, Loc.T("ClevoControl: zu heiß", "ClevoControl: too hot"),
+            msg + Loc.T(". Tipp: Lüfter auf Maximum oder „Prozessor-Drosselung“ unter „Leistung“.", ". Tip: fans to maximum or “CPU throttling” under “Performance”."), Forms.ToolTipIcon.Warning));
         CreateTray();
         RegisterHotkeys();
 
@@ -94,8 +94,8 @@ public partial class App : Application
         {
             _window.Show();
             MessageBox.Show(_window,
-                Loc.T("Es wurde kein unterstützter Clevo-Treiber gefunden. Die App läuft im Simulationsmodus.\n\nDetails: ",
-                      "No supported Clevo driver was found. The app runs in simulation mode.\n\nDetails: ") + hw.Description,
+                Loc.T("ClevoControl hat keinen Clevo-Treiber gefunden und läuft im Demo-Modus: Du kannst alles ausprobieren, an der Hardware ändert sich aber nichts.\n\nInstalliere das Clevo Control Center (oder den Treiber deines Laptop-Herstellers), damit die App funktioniert. Technische Details stehen unter „Info & Support“.",
+                      "ClevoControl found no Clevo driver and runs in demo mode: you can try everything, but nothing changes on the hardware.\n\nInstall Clevo Control Center (or your laptop vendor's driver) for the app to work. Technical details are under “About & support”."),
                 "ClevoControl", MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
@@ -111,7 +111,7 @@ public partial class App : Application
         _window.Left = 10;
         _window.Top = 10;
         var scroll = (System.Windows.Controls.ScrollViewer)_window.FindName("ContentScroll");
-        foreach (var key in (Environment.GetEnvironmentVariable("CC_SHOTS") ?? "dashboard,monitor,lighting,games,fans,power,battery,sound,keys,scenes,system,settings").Split(','))
+        foreach (var key in (Environment.GetEnvironmentVariable("CC_SHOTS") ?? "dashboard,lighting,scenes,power,fans,battery,games,keys,monitor,system,settings").Split(','))
         {
             _window.Navigate(key);
             await Task.Delay(2200);
@@ -192,7 +192,7 @@ public partial class App : Application
         menu.Items.Add(new Forms.ToolStripSeparator());
 
         var kb = _cc.Settings.Keyboard;
-        var light = new Forms.ToolStripMenuItem(Loc.T("Tastaturbeleuchtung", "Keyboard light")) { Checked = kb.Enabled };
+        var light = new Forms.ToolStripMenuItem(Loc.T("Tastaturlicht", "Keyboard light")) { Checked = kb.Enabled };
         light.Click += (_, _) => Dispatcher.Invoke(ToggleKeyboard);
         menu.Items.Add(light);
 
@@ -200,12 +200,12 @@ public partial class App : Application
         foreach (var s in _cc.Settings.Scenes)
         {
             var scene = s;
-            scenes.DropDownItems.Add($"{scene.Icon}  {scene.Name}", null, (_, _) => Dispatcher.Invoke(() => _cc.ApplyScene(scene)));
+            scenes.DropDownItems.Add(scene.Name, null, (_, _) => Dispatcher.Invoke(() => _cc.ApplyScene(scene)));
         }
         menu.Items.Add(scenes);
 
         var profiles = new Forms.ToolStripMenuItem(Loc.T("Leistungsprofil", "Performance profile"));
-        foreach (var p in Enum.GetValues<PerformanceProfile>())
+        foreach (var p in Pages.PowerPage.ProfileOrder)
         {
             var prof = p;
             var item = new Forms.ToolStripMenuItem(Pages.PowerPage.ProfileName(prof)) { Checked = _cc.Settings.Power.Profile == prof };

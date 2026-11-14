@@ -42,6 +42,28 @@ public sealed class BatteryPage(ControlCenter cc) : AppPage(cc)
         return Ui.Card(s, Loc.T("Ladelimit (FlexiCharger)", "Charge limit (FlexiCharger)"), icon: Icons.BatterySaver);
     }
 
+    /// <summary>Refresh rate: the biggest battery saver on high-Hz laptop panels.</summary>
+    private Border RefreshRateCard()
+    {
+        var p = Cc.Settings.Power;
+        var rates = DisplayService.GetRefreshRates();
+        var s = new StackPanel();
+        if (rates.Count > 1)
+        {
+            s.Children.Add(Ui.Row(Loc.T("Bildwiederholrate jetzt", "Refresh rate now"), Ui.Combo(rates.Select(r => (r, $"{r} Hz")), DisplayService.GetRefreshRate(),
+                r => DisplayService.SetRefreshRate(r), 120)));
+            s.Children.Add(Ui.Switch(Loc.T("Im Akkubetrieb automatisch senken", "Lower automatically on battery"), p.LowRefreshOnBattery,
+                v => { p.LowRefreshOnBattery = v; Cc.ApplyPower(); }, Loc.T("Spart spürbar Strom. Am Netzteil wieder die höchste Rate.", "Saves noticeable power. Highest rate again when plugged in.")));
+            s.Children.Add(Ui.Row(Loc.T("Rate im Akkubetrieb", "Rate on battery"), Ui.Combo(rates.Select(r => (r, $"{r} Hz")), rates.OrderBy(r => Math.Abs(r - p.BatteryRefreshRate)).First(),
+                r => { p.BatteryRefreshRate = r; Cc.ApplyPower(); }, 120), bottom: 0));
+        }
+        else
+        {
+            s.Children.Add(Ui.Text(Loc.T($"Dein Bildschirm unterstützt nur {DisplayService.GetRefreshRate()} Hz – hier gibt es nichts einzustellen.", $"Your display only supports {DisplayService.GetRefreshRate()} Hz – nothing to adjust here."), 12.5, sub: true));
+        }
+        return Ui.Card(s, Loc.T("Bildwiederholrate", "Refresh rate"), icon: Icons.Monitor);
+    }
+
     public override UIElement Build()
     {
         var root = new StackPanel();
@@ -77,9 +99,7 @@ public sealed class BatteryPage(ControlCenter cc) : AppPage(cc)
         root.Children.Add(Ui.Card(rows, Loc.T("Details", "Details")));
         root.Children.Add(ChargeLimitCard());
 
-        root.Children.Add(Ui.InfoBar(Loc.T(
-            "Akku schonen: Viele Clevo-Modelle haben „FlexiCharger“ (nur zwischen z. B. 40 und 80 % laden). Wenn dein Modell das unterstützt, findest du es im BIOS-Setup (beim Start meist F2) und kannst dort Start- und Stopp-Schwelle festlegen.",
-            "Battery care: many Clevo models have “FlexiCharger” (only charge between e.g. 40 and 80 %). If your model supports it, you find it in the BIOS setup (usually F2 at boot) where you can set start and stop thresholds.")));
+        root.Children.Add(RefreshRateCard());
         return root;
     }
 }

@@ -29,29 +29,28 @@ public partial class MainWindow : Window
             ["fans"] = () => new FansPage(cc),
             ["power"] = () => new PowerPage(cc),
             ["battery"] = () => new BatteryPage(cc),
-            ["sound"] = () => new SoundPage(cc),
             ["scenes"] = () => new ScenesPage(cc),
             ["settings"] = () => new SettingsPage(cc),
         };
 
         AddNav("dashboard", Icons.Home, Loc.T("Startseite", "Home"), true);
-        AddNav("monitor", Icons.Diagnostic, Loc.T("Monitor", "Monitor"));
         AddNav("lighting", Icons.Color, Loc.T("Beleuchtung", "Lighting"));
-        AddNav("games", Icons.Game, Loc.T("Spiele & Apps", "Games & apps"));
-        AddNav("fans", Icons.Gauge, Loc.T("Lüfter", "Fans"));
-        AddNav("power", Icons.Lightning, Loc.T("Leistung", "Performance"));
-        AddNav("battery", Icons.Battery, Loc.T("Akku", "Battery"));
-        AddNav("sound", Icons.Volume, Loc.T("Sound", "Sound"));
-        AddNav("keys", Icons.Keyboard, Loc.T("Tastenbelegung", "Key mapping"));
         AddNav("scenes", Icons.Star, Loc.T("Szenen", "Scenes"));
-        AddNav("system", Icons.Laptop, Loc.T("System", "System"));
+        AddNav("power", Icons.Lightning, Loc.T("Leistung", "Performance"));
+        AddNav("fans", Icons.Gauge, Loc.T("Lüfter", "Fans"));
+        AddNav("battery", Icons.Battery, Loc.T("Akku", "Battery"));
+        AddNav("games", Icons.Game, Loc.T("Spiele & Integrationen", "Games & integrations"));
+        AddNav("keys", Icons.Keyboard, Loc.T("Tastenbelegung", "Key mapping"));
+        AddNav("monitor", Icons.Diagnostic, Loc.T("Sensoren", "Sensors"));
+        AddSeparator();
+        AddNav("system", Icons.Info, Loc.T("Info & Support", "About & support"));
         AddNav("settings", Icons.Settings, Loc.T("Einstellungen", "Settings"));
 
         var hw = cc.Hardware;
         ModelText.Text = DeviceModel() ?? "Clevo";
         StatusText.Text = hw.IsReal
             ? Loc.T("Tastatur: ", "Keyboard: ") + KeyboardTypeText(hw.KeyboardType)
-            : Loc.T("Simulationsmodus – kein Clevo-Treiber", "Simulation mode – no Clevo driver");
+            : Loc.T("Demo-Modus – kein Clevo-Treiber", "Demo mode – no Clevo driver");
 
         cc.Lighting.ColorChanged += c => Dispatcher.BeginInvoke(() =>
             KeyboardDot.Background = (cc.Lighting.KeyboardIsOn ? c : new RgbColor(40, 40, 40)).ToBrush());
@@ -80,6 +79,13 @@ public partial class MainWindow : Window
         _ => Loc.T("unbekannt", "unknown"),
     };
 
+    private void AddSeparator()
+    {
+        var line = new Border { Height = 1, Margin = new Thickness(16, 8, 16, 8) };
+        line.SetResourceReference(Border.BackgroundProperty, "DividerStrokeColorDefaultBrush");
+        NavPanel.Children.Add(line);
+    }
+
     private void AddNav(string key, string icon, string title, bool isChecked = false)
     {
         var sp = new StackPanel { Orientation = Orientation.Horizontal };
@@ -98,7 +104,7 @@ public partial class MainWindow : Window
         _current = _pages[key]();
         PageHost.Content = _current.Build();
         ContentScroll.ScrollToTop();
-        foreach (RadioButton rb in NavPanel.Children)
+        foreach (var rb in NavPanel.Children.OfType<RadioButton>())
             if ((string)rb.Tag == key && rb.IsChecked != true) rb.IsChecked = true;
     }
 
