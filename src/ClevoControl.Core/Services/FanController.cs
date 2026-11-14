@@ -22,12 +22,14 @@ public sealed class FanController : IDisposable
     private FanMode? _appliedMode;
     private bool _suspended;
     private readonly object _sync = new();
+    private readonly Action? _persist;
 
-    public FanController(IClevoHardware hw, SensorService sensors, FanSettings settings)
+    public FanController(IClevoHardware hw, SensorService sensors, FanSettings settings, Action? persist = null)
     {
         _hw = hw;
         _sensors = sensors;
         _settings = settings;
+        _persist = persist;
         _sensors.Updated += OnSensors;
         Apply(settings);
     }
@@ -44,9 +46,22 @@ public sealed class FanController : IDisposable
             if (settings.Mode != _appliedMode)
             {
                 _lastSent = null;
-                if (settings.Mode == FanMode.Max) _hw.SetFanMode(FanMode.Max);
-                else if (settings.Mode == FanMode.Auto) _hw.SetFanMode(FanMode.Auto);
-                else { _cpuDuty = _gpuDuty = 100; } // custom: start high, ramp down gently
+                switch (settings.Mode)
+                {
+                    case FanMode.Max:
+                        _hw.SetFanMode(FanMode.Max);
+                        MarkOverride(true);
+                        break;
+                    case FanMode.Auto:
+                        // Only touch the EC if we actually overrode it (also after a crash). Otherwise the
+                        // firmware is already in charge and there is nothing to send.
+                        if (settings.OverrideActive) RestoreAutoUnlocked();
+                        break;
+                    default:
+                        _cpuDuty = _gpuDuty = 100; // custom: start high, ramp down gently
+                        break;
+                }
+                Log.Info($"Fan mode {_appliedMode?.ToString() ?? "-"} -> {settings.Mode}");
                 _appliedMode = settings.Mode;
             }
         }
@@ -62,7 +77,8 @@ public sealed class FanController : IDisposable
             if (cpuT is <= 5 or > 110)
             {
                 // Implausible reading – let the firmware take over.
-                _hw.SetFanMode(FanMode.Auto);
+                Log.Warn($"Implausible CPU temperature {cpuT} 00b0C, handing fans back to firmware");
+                RestoreAutoUnlocked();
                 _lastSent = null;
                 return;
             }
@@ -77,6 +93,7 @@ public sealed class FanController : IDisposable
             if (_lastSent != (cpu, gpu) || DateTime.UtcNow - _lastWrite > TimeSpan.FromSeconds(10))
             {
                 _hw.SetFanDuty(cpu, gpu, gpu);
+                MarkOverride(true);
                 _lastSent = (cpu, gpu);
                 _lastWrite = DateTime.UtcNow;
             }
@@ -116,17 +133,18 @@ public sealed class FanController : IDisposable
         return pts[^1].Duty;
     }
 
-    /// <summary>Before sleep: hand control back to the firmware.</summary>
+    /// <summary>Before sleep: hand control back to the firmware (only if we had overridden it).</summary>
     public void Suspend()
     {
         lock (_sync)
         {
             _suspended = true;
-            if (_settings.Mode != FanMode.Auto) SafeRestoreAuto();
+            if (_settings.OverrideActive) RestoreAutoUnlocked();
             _appliedMode = null;
         }
     }
 
+    /// <summary>After resume (called delayed by the ControlCenter, see OnResume).</summary>
     public void Resume()
     {
         lock (_sync)
@@ -139,7 +157,27 @@ public sealed class FanController : IDisposable
 
     public void SafeRestoreAuto()
     {
-        try { _hw.SetFanMode(FanMode.Auto); } catch { }
+        lock (_sync) RestoreAutoUnlocked();
+    }
+
+    private void RestoreAutoUnlocked()
+    {
+        try
+        {
+            _hw.SetFanMode(FanMode.Auto);
+            MarkOverride(false);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Could not hand fans back to firmware", ex);
+        }
+    }
+
+    private void MarkOverride(bool active)
+    {
+        if (_settings.OverrideActive == active) return;
+        _settings.OverrideActive = active;
+        _persist?.Invoke();
     }
 
     public void Dispose()
@@ -147,7 +185,7 @@ public sealed class FanController : IDisposable
         _sensors.Updated -= OnSensors;
         lock (_sync)
         {
-            if (_appliedMode is FanMode.Custom or FanMode.Max) SafeRestoreAuto();
+            if (_settings.OverrideActive) RestoreAutoUnlocked();
         }
     }
 }

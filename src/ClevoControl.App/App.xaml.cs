@@ -49,12 +49,26 @@ public partial class App : Application
         Loc.Init(store.Current.General.Language);
         var simulate = e.Args.Contains("--simulate");
         var hw = HardwareFactory.Create(simulate);
+        Log.Info($"Start ClevoControl {typeof(App).Assembly.GetName().Version} – {hw.Description}, keyboard {hw.KeyboardType}");
         _cc = new ControlCenter(hw, store);
 
-        AppDomain.CurrentDomain.UnhandledException += (_, _) => _cc?.Fans.SafeRestoreAuto();
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            Log.Error("Unhandled exception (app terminates)", args.ExceptionObject as Exception);
+            _cc?.Fans.SafeRestoreAuto();
+        };
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            Log.Error("Unobserved task exception", args.Exception);
+            args.SetObserved();
+        };
         DispatcherUnhandledException += (_, args) =>
         {
-            MessageBox.Show(args.Exception.Message, "ClevoControl", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Log.Error("UI error", args.Exception);
+            MessageBox.Show(Loc.T("Es ist ein Fehler aufgetreten:\n\n", "An error occurred:\n\n") + args.Exception.Message +
+                Loc.T("\n\nDie App läuft weiter. Details stehen in der Logdatei (System → Logdatei öffnen).",
+                      "\n\nThe app keeps running. Details are in the log file (System → Open log file)."),
+                "ClevoControl", MessageBoxButton.OK, MessageBoxImage.Warning);
             args.Handled = true;
         };
         SystemEvents.PowerModeChanged += OnPowerModeChanged;

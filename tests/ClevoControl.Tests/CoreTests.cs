@@ -220,3 +220,67 @@ public class MonitorTests
         Assert.All(s.Cores, c => Assert.InRange(c.LoadPercent, 0, 100));
     }
 }
+
+public class FanOverrideTests
+{
+    private sealed class CountingHardware : ClevoControl.Core.Hardware.IClevoHardware
+    {
+        public List<string> Calls { get; } = [];
+        public bool IsReal => false;
+        public string Description => "test";
+        public KeyboardType KeyboardType => KeyboardType.SingleZoneRgb;
+        public (FanReading Cpu, FanReading Gpu, FanReading? Gpu2) ReadFans() => (new(1000, 30, 50), new(1000, 30, 50), null);
+        public void SetKeyboardColor(RgbColor color) { }
+        public void SetKeyboardZoneColor(int zone, RgbColor color) { }
+        public void SetKeyboardBrightness(byte level) { }
+        public void SetKeyboardPower(bool on) { }
+        public void SetKeyboardHardwareEffect(HardwareEffect effect) { }
+        public void SetFanMode(FanMode mode) => Calls.Add("mode:" + mode);
+        public void SetFanDuty(byte cpu, byte gpu1, byte gpu2) => Calls.Add("duty");
+        public void SetPerformanceProfile(PerformanceProfile profile) { }
+        public PerformanceProfile? ReadStoredPerformanceProfile() => null;
+        public ChargeLimitInfo? ReadChargeLimit() => null;
+        public void SetChargeLimit(bool enabled, int start, int stop) { }
+        public byte[] ReadSpecBuffer() => new byte[256];
+        public byte[] ReadFanBuffer() => new byte[256];
+    }
+
+    [Fact]
+    public void Auto_without_override_sends_nothing_on_start_suspend_and_resume()
+    {
+        var hw = new CountingHardware();
+        using var sensors = new ClevoControl.Core.Services.SensorService(hw) { Paused = true };
+        var fans = new ClevoControl.Core.Services.FanController(hw, sensors, new FanSettings { Mode = FanMode.Auto });
+        fans.Suspend();
+        fans.Resume();
+        fans.Dispose();
+        Assert.Empty(hw.Calls);
+    }
+
+    [Fact]
+    public void Max_then_auto_hands_control_back_once()
+    {
+        var hw = new CountingHardware();
+        using var sensors = new ClevoControl.Core.Services.SensorService(hw) { Paused = true };
+        var settings = new FanSettings { Mode = FanMode.Max };
+        var fans = new ClevoControl.Core.Services.FanController(hw, sensors, settings);
+        Assert.True(settings.OverrideActive);
+        settings.Mode = FanMode.Auto;
+        fans.Apply(settings);
+        Assert.False(settings.OverrideActive);
+        Assert.Equal(["mode:Max", "mode:Auto"], hw.Calls);
+        fans.Dispose();
+        Assert.Equal(2, hw.Calls.Count); // nothing more on exit
+    }
+
+    [Fact]
+    public void Leftover_override_from_a_crash_is_restored_on_start()
+    {
+        var hw = new CountingHardware();
+        using var sensors = new ClevoControl.Core.Services.SensorService(hw) { Paused = true };
+        var settings = new FanSettings { Mode = FanMode.Auto, OverrideActive = true };
+        _ = new ClevoControl.Core.Services.FanController(hw, sensors, settings);
+        Assert.Equal(["mode:Auto"], hw.Calls);
+        Assert.False(settings.OverrideActive);
+    }
+}

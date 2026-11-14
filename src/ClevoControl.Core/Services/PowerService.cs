@@ -28,6 +28,7 @@ public sealed class PowerService
     {
         _hw.SetPerformanceProfile(profile);
         ActiveProfile = profile;
+        Log.Info($"Performance profile -> {profile}" + (syncWindows ? " (+ Windows power mode)" : ""));
         ProfileApplied?.Invoke(profile);
         if (syncWindows)
         {

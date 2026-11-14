@@ -34,7 +34,12 @@ public sealed class SystemPage(ControlCenter cc) : AppPage(cc)
         var issue = Ui.Button(Loc.T("Problem melden (GitHub)", "Report a problem (GitHub)"), () =>
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(SettingsPage.RepoUrl + "/issues/new") { UseShellExecute = true }), icon: Icons.OpenExternal);
         list.Children.Add(new Border { Height = 6 });
-        list.Children.Add(Ui.Wrap(copy, issue));
+        var log = Ui.Button(Loc.T("Logdatei öffnen", "Open log file"), () =>
+        {
+            if (System.IO.File.Exists(Log.FilePath)) System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Log.FilePath) { UseShellExecute = true });
+            else MessageBox.Show(Loc.T("Noch keine Einträge.", "No entries yet."), "ClevoControl");
+        }, icon: Icons.History);
+        list.Children.Add(Ui.Wrap(copy, issue, log));
         root.Children.Add(Ui.Card(list, Loc.T("Systeminformationen", "System information"), icon: Icons.Laptop));
 
         root.Children.Add(Ui.Section(Loc.T("Clevo-Software im Hintergrund", "Clevo background software")));

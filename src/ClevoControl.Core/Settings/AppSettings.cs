@@ -173,6 +173,12 @@ public sealed class FanSettings
     /// <summary>Maximum duty decrease per second (percent points) to avoid fan pumping.</summary>
     public int RampDownPerSecond { get; set; } = 3;
 
+    /// <summary>
+    /// Internal: true while ClevoControl has overridden the firmware fan control (max or custom duty).
+    /// Persisted so that after a crash the next start knows it must hand control back.
+    /// </summary>
+    public bool OverrideActive { get; set; }
+
     /// <summary>Each performance profile remembers its own fan mode and curves.</summary>
     public bool PerProfile { get; set; }
     public Dictionary<PerformanceProfile, FanProfile> Profiles { get; set; } = [];

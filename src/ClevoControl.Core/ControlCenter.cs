@@ -21,7 +21,7 @@ public sealed class ControlCenter : IDisposable
         Sensors = new SensorService(hardware);
         Cs2 = new Cs2Integration();
         Lighting = new LightingEngine(hardware, Settings.Keyboard, () => Sensors.Latest, Cs2);
-        Fans = new FanController(hardware, Sensors, Settings.Fan);
+        Fans = new FanController(hardware, Sensors, Settings.Fan, () => store.SaveSoon());
         Power = new PowerService(hardware);
         Sound = new SoundService();
         Hook = new KeyboardHook();
@@ -325,13 +325,44 @@ public sealed class ControlCenter : IDisposable
         }
     }
 
-    public void OnSuspend() => Fans.Suspend();
+    private Timer? _resumeTimer;
 
+    /// <summary>
+    /// Before sleep: stop every access to the EC (lighting, sensors) and hand fans back to the firmware.
+    /// </summary>
+    public void OnSuspend()
+    {
+        Log.Info("Suspend: pausing EC access");
+        _resumeTimer?.Dispose();
+        Lighting.Paused = true;
+        Sensors.Paused = true;
+        try { Fans.Suspend(); } catch (Exception ex) { Log.Error("Fan suspend failed", ex); }
+    }
+
+    /// <summary>
+    /// After resume the ACPI/EC and the PCIe devices need a moment. Talking to the EC right away
+    /// (as 0.2.0 did) is risky, so everything restarts only after a delay. The performance profile
+    /// is kept by the firmware itself and is not re-sent.
+    /// </summary>
     public void OnResume()
     {
-        Fans.Resume();
-        Lighting.Invalidate();
-        try { Power.SetProfile(Settings.Power.Profile, false); } catch { }
+        Log.Info("Resume: waiting before touching the EC");
+        _resumeTimer?.Dispose();
+        _resumeTimer = new Timer(_ =>
+        {
+            try
+            {
+                Sensors.Paused = false;
+                Fans.Resume();
+                Lighting.Invalidate();
+                Lighting.Paused = false;
+                Log.Info("Resume: EC access re-enabled");
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Resume failed", ex);
+            }
+        }, null, TimeSpan.FromSeconds(10), Timeout.InfiniteTimeSpan);
     }
 
     public void Dispose()

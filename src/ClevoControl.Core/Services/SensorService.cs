@@ -13,6 +13,7 @@ public sealed class SensorService : IDisposable
     private readonly LinkedList<SensorSnapshot> _history = new();
     private readonly object _sync = new();
     private ulong _lastIdle, _lastTotal;
+    private DateTime _lastErrorLog;
 
     public SensorService(IClevoHardware hw)
     {
@@ -22,6 +23,11 @@ public sealed class SensorService : IDisposable
     }
 
     public SensorSnapshot Latest { get; private set; }
+
+    /// <summary>While true (sleep / resume) the EC is not polled.</summary>
+    public volatile bool Paused;
+
+    private int _polling;
 
     /// <summary>Raised on a thread-pool thread after each poll.</summary>
     public event Action<SensorSnapshot>? Updated;
@@ -33,6 +39,9 @@ public sealed class SensorService : IDisposable
 
     private void Poll()
     {
+        if (Paused) return;
+        // Never stack polls: if a driver call hangs, later ticks are skipped instead of piling up.
+        if (Interlocked.Exchange(ref _polling, 1) == 1) return;
         try
         {
             var (cpu, gpu, gpu2) = _hw.ReadFans();
@@ -46,9 +55,18 @@ public sealed class SensorService : IDisposable
             Latest = snap;
             Updated?.Invoke(snap);
         }
-        catch
+        catch (Exception ex)
         {
             // Sensor read failed (e.g. during resume) – try again next tick.
+            if (DateTime.UtcNow - _lastErrorLog > TimeSpan.FromMinutes(1))
+            {
+                _lastErrorLog = DateTime.UtcNow;
+                Log.Warn("Sensor read failed: " + ex.Message);
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _polling, 0);
         }
     }
 

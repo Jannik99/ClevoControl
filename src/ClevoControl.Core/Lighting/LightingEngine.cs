@@ -44,6 +44,7 @@ public sealed class LightingEngine : IDisposable
     private DateTime _micChecked;
     private DateTime _pomodoroStart = DateTime.UtcNow;
 
+    private DateTime _lastErrorLog;
     private RgbColor? _overrideColor;
     private DateTime _overrideUntil;
 
@@ -63,6 +64,9 @@ public sealed class LightingEngine : IDisposable
     public RgbColor CurrentColor { get; private set; }
 
     public bool KeyboardIsOn { get; private set; } = true;
+
+    /// <summary>While true (sleep / resume) nothing is sent to the EC.</summary>
+    public volatile bool Paused;
 
     /// <summary>Last measured bar fill level of the screen-region effect (0..1).</summary>
     public double? LastRegionFill { get; private set; }
@@ -101,6 +105,11 @@ public sealed class LightingEngine : IDisposable
         var sw = Stopwatch.StartNew();
         while (_running)
         {
+            if (Paused)
+            {
+                _wake.WaitOne(500);
+                continue;
+            }
             var s = _settings;
             var frameMs = 1000;
             try
@@ -163,9 +172,14 @@ public sealed class LightingEngine : IDisposable
                 }
                 _lastEffect = effect;
             }
-            catch
+            catch (Exception ex)
             {
                 frameMs = 1000; // EC busy or resuming – retry later
+                if (DateTime.UtcNow - _lastErrorLog > TimeSpan.FromMinutes(1))
+                {
+                    _lastErrorLog = DateTime.UtcNow;
+                    Log.Warn("Lighting: " + ex.Message);
+                }
             }
 
             _wake.WaitOne(frameMs);

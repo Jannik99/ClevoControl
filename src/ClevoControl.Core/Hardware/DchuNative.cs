@@ -108,50 +108,76 @@ public sealed unsafe class DchuNative : IDisposable
         return Set(command, data);
     }
 
+    /// <summary>
+    /// Runs one driver call under the lock. If another call hangs (e.g. the EC is still waking up
+    /// after sleep), callers give up after a few seconds instead of freezing the whole app.
+    /// </summary>
+    private T Call<T>(string what, Func<T> call)
+    {
+        if (!Monitor.TryEnter(_sync, TimeSpan.FromSeconds(4)))
+        {
+            Log.Warn($"DCHU busy, skipped {what}");
+            throw new TimeoutException($"Clevo driver busy ({what}).");
+        }
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            return call();
+        }
+        finally
+        {
+            Monitor.Exit(_sync);
+            if (sw.ElapsedMilliseconds > 1000) Log.Warn($"DCHU call {what} took {sw.ElapsedMilliseconds} ms");
+        }
+    }
+
     public int Set(int command, ReadOnlySpan<byte> data)
     {
-        lock (_sync)
+        // The DLL expects a writable buffer; copy to be safe.
+        var buf = data.ToArray();
+        return Call($"Set 0x{command:X2} {Convert.ToHexString(buf)}", () =>
         {
-            // The DLL expects a writable buffer; copy to be safe.
-            var buf = data.ToArray();
             fixed (byte* p = buf) return _set(command, p, buf.Length);
-        }
+        });
     }
 
     public byte[] GetBuffer(int command, int size = 256)
     {
         var buf = new byte[Math.Max(size, 256)];
-        lock (_sync)
+        Call($"GetBuffer 0x{command:X2}", () =>
         {
-            fixed (byte* p = buf) _getBuffer(command, p);
-        }
+            fixed (byte* p = buf) return _getBuffer(command, p);
+        });
         return buf;
     }
 
     public int GetInteger(int command)
     {
-        int value = 0;
-        lock (_sync) { _getInteger(command, &value); }
-        return value;
+        return Call($"GetInteger 0x{command:X2}", () =>
+        {
+            int value = 0;
+            _getInteger(command, &value);
+            return value;
+        });
     }
 
     public byte[] ReadAppSettings(int page, int offset, int length)
     {
         var buf = new byte[Math.Max(length, 1)];
-        lock (_sync)
+        Call($"ReadAppSettings {page}/{offset}", () =>
         {
-            fixed (byte* p = buf) _readSettings(page, offset, length, p);
-        }
+            fixed (byte* p = buf) return _readSettings(page, offset, length, p);
+        });
         return buf;
     }
 
     public void WriteAppSettings(int page, int offset, ReadOnlySpan<byte> data)
     {
         var buf = data.ToArray();
-        lock (_sync)
+        Call($"WriteAppSettings {page}/{offset}", () =>
         {
-            fixed (byte* p = buf) _writeSettings(page, offset, buf.Length, p);
-        }
+            fixed (byte* p = buf) return _writeSettings(page, offset, buf.Length, p);
+        });
     }
 
     public void Dispose()
