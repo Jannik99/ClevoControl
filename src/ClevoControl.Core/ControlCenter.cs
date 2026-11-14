@@ -48,7 +48,10 @@ public sealed class ControlCenter : IDisposable
         _powerTimer = new Timer(_ => { try { Power.CheckPowerSource(Settings.Power); } catch { } }, null, 5000, 5000);
 
         ApplyIntegrations();
+        AutoProfiles = new Automation.AutoProfileService(this);
     }
+
+    public Automation.AutoProfileService AutoProfiles { get; }
 
     public IClevoHardware Hardware { get; }
     public SettingsStore Store { get; }
@@ -367,6 +370,7 @@ public sealed class ControlCenter : IDisposable
 
     public void Dispose()
     {
+        AutoProfiles.Dispose();
         _powerTimer.Dispose();
         Store.SaveNow();
         Hook.Dispose();

@@ -23,6 +23,7 @@ public partial class MainWindow : Window
             ["dashboard"] = () => new DashboardPage(cc),
             ["monitor"] = () => new MonitorPage(cc),
             ["keys"] = () => new KeysPage(cc),
+            ["automation"] = () => new AutomationPage(cc),
             ["system"] = () => new SystemPage(cc),
             ["lighting"] = () => new LightingPage(cc),
             ["games"] = () => new GamesPage(cc),
@@ -36,6 +37,7 @@ public partial class MainWindow : Window
         AddNav("dashboard", Icons.Home, Loc.T("Startseite", "Home"), true);
         AddNav("lighting", Icons.Color, Loc.T("Beleuchtung", "Lighting"));
         AddNav("scenes", Icons.Star, Loc.T("Szenen", "Scenes"));
+        AddNav("automation", Icons.Sparkle, Loc.T("Automatik", "Automation"));
         AddNav("power", Icons.Lightning, Loc.T("Leistung", "Performance"));
         AddNav("fans", Icons.Gauge, Loc.T("Lüfter", "Fans"));
         AddNav("battery", Icons.Battery, Loc.T("Akku", "Battery"));

@@ -103,6 +103,8 @@ public sealed class DashboardPage(ControlCenter cc) : AppPage(cc)
                 }, () => DisplayService.GetRefreshRates().Count > 1),
             new("openrgb", Icons.Plug, () => "OpenRGB", () => s.Games.OpenRgbServerEnabled,
                 () => { s.Games.OpenRgbServerEnabled = !s.Games.OpenRgbServerEnabled; Cc.ApplyKeyboard(); }),
+            new("auto", Icons.Sparkle, () => Loc.T("Automatik", "Automation"), () => s.AutoProfiles.Enabled,
+                () => { s.AutoProfiles.Enabled = !s.AutoProfiles.Enabled; Cc.Store.SaveSoon(); }),
             new("hotkeys", Icons.Keyboard, () => Loc.T("Tastenkürzel", "Hotkeys"), () => s.General.SceneHotkeys,
                 () => { s.General.SceneHotkeys = !s.General.SceneHotkeys; Cc.Store.SaveSoon(); }),
         ];

@@ -51,6 +51,7 @@ public partial class App : Application
         var hw = HardwareFactory.Create(simulate);
         Log.Info($"Start ClevoControl {typeof(App).Assembly.GetName().Version} – {hw.Description}, keyboard {hw.KeyboardType}");
         _cc = new ControlCenter(hw, store);
+        _cc.AutoProfiles.Invoke = a => Dispatcher.BeginInvoke(a);
 
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
         {
@@ -111,7 +112,7 @@ public partial class App : Application
         _window.Left = 10;
         _window.Top = 10;
         var scroll = (System.Windows.Controls.ScrollViewer)_window.FindName("ContentScroll");
-        foreach (var key in (Environment.GetEnvironmentVariable("CC_SHOTS") ?? "dashboard,lighting,scenes,power,fans,battery,games,keys,monitor,system,settings").Split(','))
+        foreach (var key in (Environment.GetEnvironmentVariable("CC_SHOTS") ?? "dashboard,lighting,scenes,automation,power,fans,battery,games,keys,monitor,system,settings").Split(','))
         {
             _window.Navigate(key);
             await Task.Delay(2200);

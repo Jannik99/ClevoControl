@@ -230,6 +230,32 @@ public sealed class KeyRemapSettings
     public bool ShowNumpad { get; set; }
 }
 
+/// <summary>Own rule: a process gets a category or directly a scene.</summary>
+public sealed class AppRule
+{
+    public string ProcessName { get; set; } = "";
+    public string? DisplayName { get; set; }
+    public Automation.AppCategory Category { get; set; } = Automation.AppCategory.Game;
+    /// <summary>Optional: this scene instead of the category's scene.</summary>
+    public string? SceneName { get; set; }
+}
+
+public sealed class AutoProfileSettings
+{
+    public bool Enabled { get; set; }
+    /// <summary>Restore the previous state when the app is left.</summary>
+    public bool RestoreOnLeave { get; set; } = true;
+    /// <summary>Treat any exclusive-fullscreen app as a game.</summary>
+    public bool DetectFullscreenGames { get; set; } = true;
+    public Dictionary<Automation.AppCategory, string> CategoryScenes { get; set; } = new()
+    {
+        [Automation.AppCategory.Game] = "Gaming",
+        [Automation.AppCategory.Video] = "Film",
+        [Automation.AppCategory.Music] = "Musik",
+    };
+    public List<AppRule> CustomRules { get; set; } = [];
+}
+
 public sealed class CoolingSettings
 {
     public Services.CoolingMode Mode { get; set; } = Services.CoolingMode.Normal;
@@ -329,6 +355,7 @@ public sealed class AppSettings
     public GameSettings Games { get; set; } = new();
     public CoolingSettings Cooling { get; set; } = new();
     public KeyRemapSettings KeyRemap { get; set; } = new();
+    public AutoProfileSettings AutoProfiles { get; set; } = new();
     public List<Scene> Scenes { get; set; } = Scene.Defaults();
 }
 

@@ -29,11 +29,13 @@
 | **Fans** | Live RPM/duty/temperatures, auto / max / **custom fan curve** with a hard-coded safety net, fans remembered **per performance profile**, “fans full” hotkey |
 | **Monitor** | Detailed graphs: load and clock **per CPU core**, NVIDIA GPU load, VRAM, clocks, power draw (NVML), temperature and fan history |
 | **Cooling modes** | Turbo off / CPU limit through the Windows power plan – lowers temperatures **without any driver**, even when the BIOS locks undervolting; overheat notification |
-| **Key mapping** | FlexiKey replacement: map keys to shortcuts, text or programs, or disable them |
+| **Key mapping** | FlexiKey replacement with a clickable QWERTZ keyboard: map keys to shortcuts, text or programs, or disable them |
 | **System** | Model, BIOS, EC firmware, drivers – copied for bug reports with one click; overview of Clevo background software |
 | **Battery** | Health, capacity, cycles; **FlexiCharger** charge limit on models that expose it to software (experimental) |
 | **Performance** | Clevo profiles (Quiet, Power saving, Performance, Entertainment), Windows power mode, automatic AC/battery switching, lower refresh rate on battery |
-| **More** | Volume / mute / mic mute / output device, Windows-key lock, scenes with hotkeys (Ctrl+Alt+Shift+1…9, opt-in), tray menu, autostart, light & dark mode, German & English |
+| **More** | Volume (in quick settings) / mute / mic mute / output device, Windows-key lock, scenes with hotkeys (Ctrl+Alt+Shift+1…9, opt-in), tray menu, autostart, light & dark mode, German & English |
+| **Automation** | Recognises the app in the foreground and switches scenes by itself: **181 known apps** (games, video players, streaming in the browser – Netflix, YouTube, Disney+, Prime Video, Twitch … –, music, meetings) plus **every game** from Steam, Epic, GOG, EA, Ubisoft, Battle.net, Riot and Xbox, Unreal Engine and fullscreen games; restores the previous state afterwards |
+| **Quick settings** | Windows 11 style tiles on the home page (keyboard light, profile, fans full, CPU throttling, screen color, Win key, mute, mic …), configurable, plus volume, screen and keyboard brightness |
 | **Scripting** | Local HTTP API (127.0.0.1 only) and the `clevoctl` command-line tool |
 
 <p>
@@ -147,7 +149,9 @@ Issues and pull requests are welcome – especially reports from other Clevo mod
 * Lüfter: Live-Werte, Auto, Max oder **eigene Lüfterkurve mit Sicherheitsnetz**, Lüfter je Leistungsprofil, Kürzel „Lüfter voll“
 * **Monitor:** Auslastung und Takt pro CPU-Kern, GPU-Last, Grafikspeicher, Takt und Verbrauch
 * **Kühl-Modi:** Turbo aus oder CPU-Limit über den Windows-Energiesparplan, ganz ohne Treiber, auch wenn das BIOS Undervolting sperrt; dazu eine Hitzewarnung
-* **Tastenbelegung** als FlexiKey-Ersatz: Tastenkombinationen, Texte, Programme, Tasten sperren
+* **Tastenbelegung** als FlexiKey-Ersatz mit anklickbarer QWERTZ-Tastatur: Tastenkombinationen, Texte, Programme, Tasten sperren
+* **Automatik:** erkennt 181 bekannte Apps (Spiele, Videoplayer, Netflix, YouTube, Disney+ & Co. im Browser, Musik, Meetings) und automatisch alle Spiele aus Steam, Epic, GOG, EA, Ubisoft, Battle.net, Riot und Xbox – und wechselt passend die Szene
+* **Schnelleinstellungen** im Windows-11-Stil auf der Startseite, frei zusammenstellbar
 * **System:** BIOS, EC und Treiber auf einen Klick kopiert (für Fehlerberichte), Überblick über Clevos Hintergrundprogramme
 * Ladelimit (FlexiCharger) auf Modellen, die es per Software anbieten (experimentell)
 * Leistungsprofile, Windows-Energiemodus, automatischer Wechsel bei Akku oder Netzteil, niedrigere Bildwiederholrate im Akkubetrieb

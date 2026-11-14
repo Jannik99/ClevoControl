@@ -284,3 +284,43 @@ public class FanOverrideTests
         Assert.False(settings.OverrideActive);
     }
 }
+
+public class AppDetectionTests
+{
+    private static ClevoControl.Core.Automation.Detection D(string process, string? path, string title, AutoProfileSettings? s = null) =>
+        ClevoControl.Core.Automation.AppDetector.Classify(new ClevoControl.Core.Automation.ForegroundApp(process, path, title), s ?? new AutoProfileSettings { DetectFullscreenGames = false });
+
+    [Theory]
+    [InlineData("chrome", "Breaking Bad | Netflix - Google Chrome", ClevoControl.Core.Automation.AppCategory.Video)]
+    [InlineData("msedge", "Lofi Girl - YouTube Music - Microsoft Edge", ClevoControl.Core.Automation.AppCategory.Music)]
+    [InlineData("firefox", "Cooking video - YouTube — Mozilla Firefox", ClevoControl.Core.Automation.AppCategory.Video)]
+    [InlineData("chrome", "Gmail - Google Chrome", ClevoControl.Core.Automation.AppCategory.None)]
+    [InlineData("vlc", "movie.mkv - VLC media player", ClevoControl.Core.Automation.AppCategory.Video)]
+    [InlineData("Spotify", "Spotify Premium", ClevoControl.Core.Automation.AppCategory.Music)]
+    [InlineData("cs2", "Counter-Strike 2", ClevoControl.Core.Automation.AppCategory.Game)]
+    [InlineData("ms-teams", "Chat | Microsoft Teams", ClevoControl.Core.Automation.AppCategory.Meeting)]
+    public void Recognises_known_apps(string process, string title, ClevoControl.Core.Automation.AppCategory expected) =>
+        Assert.Equal(expected, D(process, null, title).Category);
+
+    [Fact]
+    public void Minecraft_needs_both_java_and_title()
+    {
+        Assert.Equal(ClevoControl.Core.Automation.AppCategory.Game, D("javaw", null, "Minecraft 1.21").Category);
+        Assert.Equal(ClevoControl.Core.Automation.AppCategory.None, D("javaw", null, "Some Java tool").Category);
+    }
+
+    [Fact]
+    public void Games_in_store_folders_and_unreal_builds_are_detected()
+    {
+        Assert.Equal(ClevoControl.Core.Automation.AppCategory.Game, D("SomeIndieGame", @"D:\SteamLibrary\steamapps\common\Indie\SomeIndieGame.exe", "Indie").Category);
+        Assert.Equal(ClevoControl.Core.Automation.AppCategory.Game, D("Whatever-Win64-Shipping", @"C:\Games\Whatever\Whatever-Win64-Shipping.exe", "Whatever").Category);
+        Assert.Equal(ClevoControl.Core.Automation.AppCategory.None, D("notepad", @"C:\Windows\notepad.exe", "Unbenannt – Editor").Category);
+    }
+
+    [Fact]
+    public void Own_rules_win()
+    {
+        var s = new AutoProfileSettings { DetectFullscreenGames = false, CustomRules = [new AppRule { ProcessName = "notepad", Category = ClevoControl.Core.Automation.AppCategory.Music }] };
+        Assert.Equal(ClevoControl.Core.Automation.AppCategory.Music, D("notepad", null, "x", s).Category);
+    }
+}
