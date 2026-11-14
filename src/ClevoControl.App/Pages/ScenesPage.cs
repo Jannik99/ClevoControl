@@ -63,7 +63,7 @@ public sealed class ScenesPage(ControlCenter cc) : AppPage(cc)
         row.Children.Add(name);
         row.Children.Add(icon);
         row.Children.Add(save);
-        root.Children.Add(Ui.Card(row, Loc.T("Neue Szene", "New scene")));
+        root.Children.Add(Ui.Card(row, Loc.T("Neue Szene", "New scene"), icon: Icons.Add));
 
         _list = new StackPanel();
         root.Children.Add(_list);

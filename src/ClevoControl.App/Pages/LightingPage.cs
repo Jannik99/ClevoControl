@@ -118,7 +118,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
         AddGroup(Loc.T("Stimmung", "Ambience"), LightingEffectKind.Candle, LightingEffectKind.Daylight, LightingEffectKind.Lava, LightingEffectKind.Fire, LightingEffectKind.Heartbeat, LightingEffectKind.Police);
         AddGroup(Loc.T("Reagiert auf …", "Reacts to …"), LightingEffectKind.Ambient, LightingEffectKind.Music, LightingEffectKind.Reactive, LightingEffectKind.Temperature, LightingEffectKind.CpuLoad, LightingEffectKind.Battery, LightingEffectKind.OnAir, LightingEffectKind.Pomodoro);
         AddGroup(Loc.T("Spiele", "Games"), LightingEffectKind.ScreenRegion, LightingEffectKind.GameCs2);
-        root.Children.Add(Ui.Card(gallery, Loc.T("Effekt", "Effect")));
+        root.Children.Add(Ui.Card(gallery, Loc.T("Effekt", "Effect"), icon: Icons.Sparkle));
 
         // Color + options side by side
         var grid = new Grid();
@@ -135,7 +135,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
                 Ui.Combo(new[] { 0, 1, 2, 5, 10, 15, 30, 60 }.Select(m => (m, m == 0 ? Loc.T("nie", "never") : $"{m} min")), Kb.IdleTimeoutMinutes,
                     m => { Kb.IdleTimeoutMinutes = m; Cc.ApplyKeyboard(); }, 120),
                 Loc.T("Geht beim nächsten Tastendruck wieder an", "Turns back on with the next key press"), 0)
-        ), Loc.T("Allgemein", "General")));
+        ), Loc.T("Allgemein", "General"), icon: Icons.Brightness));
         right.Children.Add(_options);
         Grid.SetColumn(right, 2);
         grid.Children.Add(colorCard);
@@ -185,7 +185,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
             Margin = new Thickness(0, 12, 0, 0),
 
         };
-        return Ui.Card(Ui.Stack(picker, favorites, expander), Loc.T("Farbe", "Color"));
+        return Ui.Card(Ui.Stack(picker, favorites, expander), Loc.T("Farbe", "Color"), icon: Icons.Color);
     }
 
     private UIElement BuildOptions()
@@ -273,7 +273,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
             default:
                 return new ContentControl();
         }
-        return Ui.Card(s, Loc.T("Effekt-Optionen", "Effect options"));
+        return Ui.Card(s, Loc.T("Effekt-Optionen", "Effect options"), icon: Icons.Tune);
     }
 
     public static string HardwareEffectName(HardwareEffect h) => h switch
@@ -299,8 +299,8 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
             Ui.Button(Loc.T("Empfohlen", "Recommended"), () => { Kb.GainRed = 0.71; Kb.GainGreen = 1; Kb.GainBlue = 0.78; Cc.ApplyKeyboard(); ((MainWindow)Application.Current.MainWindow!).Navigate("lighting"); }),
             Ui.Button(Loc.T("Ohne Korrektur", "No correction"), () => { Kb.GainRed = 1; Kb.GainGreen = 1; Kb.GainBlue = 1; Cc.ApplyKeyboard(); ((MainWindow)Application.Current.MainWindow!).Navigate("lighting"); })));
         var wbExpander = new Expander { Header = Ui.Text(Loc.T("Erweitert: Weißabgleich", "Advanced: white balance"), 14, true), Content = s, IsExpanded = false };
-        return Ui.Card(wbExpander, Loc.T("Weißabgleich", "White balance"),
-            Loc.T("Die LEDs sind ab Werk rot- und blaustichig. Stell die Regler so ein, dass „Weiß testen“ wirklich weiß aussieht – dann stimmen alle Farben.",
-                  "The LEDs are red/blue-heavy from the factory. Adjust until “Test white” looks truly white – then all colors are accurate."));
+        s.Children.Insert(0, Ui.Text(Loc.T("Die LEDs sind ab Werk rot- und blaustichig. Stell die Regler so ein, dass „Weiß testen“ wirklich weiß aussieht – dann stimmen alle Farben.",
+            "The LEDs are red/blue-heavy from the factory. Adjust until “Test white” looks truly white – then all colors are accurate."), 12.5, sub: true, bottom: 12));
+        return Ui.Card(wbExpander);
     }
 }

@@ -34,7 +34,7 @@ public sealed class SettingsPage(ControlCenter cc) : AppPage(cc)
             Loc.T("Empfohlen", "Recommended")));
         s.Children.Add(Ui.Row(Loc.T("Sprache", "Language"), Ui.Combo(new[] { ("auto", Loc.T("Automatisch", "Automatic")), ("de", "Deutsch"), ("en", "English") }, g.Language,
             l => { g.Language = l; Cc.Store.SaveSoon(); MessageBox.Show(Loc.T("Wird nach einem Neustart der App übernommen.", "Applied after restarting the app."), "ClevoControl"); }, 160)));
-        root.Children.Add(Ui.Card(s, Loc.T("Allgemein", "General")));
+        root.Children.Add(Ui.Card(s, Loc.T("Allgemein", "General"), icon: Icons.Settings));
         return root;
     }
 }

@@ -66,7 +66,7 @@ public sealed class FansPage(ControlCenter cc) : AppPage(cc)
                      $"Mode and curves then only apply to the current profile ({PowerPage.ProfileName(Cc.Settings.Power.Profile)}). Switching the profile loads its fan settings.")),
             Ui.Text(Loc.T("Tastenkürzel „Lüfter voll“: Strg+Alt+Umschalt+F (wenn „Globale Tastenkürzel“ in den Einstellungen an ist).",
                 "Hotkey “fans full”: Ctrl+Alt+Shift+F (when “Global hotkeys” is on in Settings)."), 12, sub: true));
-        root.Children.Add(Ui.Card(modeStack, Loc.T("Modus", "Mode")));
+        root.Children.Add(Ui.Card(modeStack, Loc.T("Modus", "Mode"), icon: Icons.Gauge));
         Cc.FanSettingsSwapped += OnSwapped;
 
         // Curves
@@ -91,7 +91,7 @@ public sealed class FansPage(ControlCenter cc) : AppPage(cc)
         var safety = Ui.InfoBar(Loc.T("Sicherheitsnetz (rot hinterlegt): Ab 70 °C mindestens 35 %, ab 80 °C mindestens 70 %, ab 88 °C immer 100 %. Bei Fehlern, im Standby und beim Beenden übernimmt automatisch wieder das BIOS.",
                 "Safety net (red area): from 70 °C at least 35 %, from 80 °C at least 70 %, from 88 °C always 100 %. On errors, during sleep and on exit, the BIOS automatically takes over again."));
         curves.Children.Add(safety);
-        root.Children.Add(Ui.Card(curves, Loc.T("Eigene Lüfterkurve", "Custom fan curve"), Loc.T("Punkte mit der Maus ziehen. Sobald du die Kurve änderst, wird „Eigene Kurve“ aktiv.", "Drag the points. As soon as you change the curve, “Custom curve” becomes active.")));
+        root.Children.Add(Ui.Card(curves, Loc.T("Eigene Lüfterkurve", "Custom fan curve"), Loc.T("Punkte mit der Maus ziehen. Sobald du die Kurve änderst, wird „Eigene Kurve“ aktiv.", "Drag the points. As soon as you change the curve, “Custom curve” becomes active."), Icons.Edit));
 
         // Overheat warning
         var cooling = Cc.Settings.Cooling;

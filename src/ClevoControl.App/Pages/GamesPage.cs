@@ -53,7 +53,7 @@ public sealed class GamesPage(ControlCenter cc) : AppPage(cc)
             (HealthDisplay.Both, Loc.T("Farbton + Helligkeit", "Hue + brightness")),
         }, Kb.HealthDisplay, h => { Kb.HealthDisplay = h; Cc.ApplyKeyboard(); }, 330);
         return Ui.Card(Ui.Stack(Ui.Row(Loc.T("Darstellung", "Display"), combo, Loc.T("Gilt für Lebensleiste und CS2. Bei wenig Leben pulsiert die Tastatur zusätzlich.", "Applies to health bar and CS2. At low health the keyboard pulses as well."), 0)),
-            Loc.T("Darstellung der Lebensanzeige", "Health display style"));
+            Loc.T("Darstellung der Lebensanzeige", "Health display style"), icon: Icons.Heart);
     }
 
     private Border RegionCard()

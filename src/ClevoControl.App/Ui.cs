@@ -282,6 +282,9 @@ public static class Ui
             GroupName = group,
             IsChecked = isChecked,
             Width = width,
+            // Same height for every tile of a row (with or without a two-line description).
+            MinHeight = subtitle is null ? 72 : 96,
+            VerticalContentAlignment = VerticalAlignment.Top,
         };
         r.Checked += (_, _) => select();
         return r;

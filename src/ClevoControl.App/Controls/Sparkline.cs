@@ -26,8 +26,10 @@ public sealed class Sparkline : FrameworkElement
         if (_values.Count < 2 || w <= 0 || h <= 0) return;
 
         var range = Math.Max(1e-6, Max - Min);
-        var step = w / (Core.Services.SensorService.HistoryLength - 1);
-        var x0 = w - (_values.Count - 1) * step;
+        // Few values yet (app just started): stretch them over the full width instead of a stub at the right.
+        var slots = Math.Max(_values.Count, 2);
+        var step = w / (slots - 1);
+        var x0 = 0.0;
         Point P(int i) => new(x0 + i * step, h - Math.Clamp((_values[i] - Min) / range, 0, 1) * (h - 2) - 1);
 
         var line = new StreamGeometry();

@@ -96,7 +96,7 @@ public sealed class BatteryPage(ControlCenter cc) : AppPage(cc)
         if (b.Remaining is { } rem) Add(Loc.T("Restlaufzeit (Windows)", "Time left (Windows)"), $"{(int)rem.TotalHours} h {rem.Minutes:00} min");
         if (b.Manufacturer is { Length: > 0 } m) Add(Loc.T("Hersteller", "Manufacturer"), m);
         if (b.Chemistry is { } c) Add(Loc.T("Zelltyp", "Chemistry"), c);
-        root.Children.Add(Ui.Card(rows, Loc.T("Details", "Details")));
+        root.Children.Add(Ui.Card(rows, Loc.T("Details", "Details"), icon: Icons.Info));
         root.Children.Add(ChargeLimitCard());
 
         root.Children.Add(RefreshRateCard());
