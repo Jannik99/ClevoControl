@@ -326,3 +326,15 @@ public class AppDetectionTests
         Assert.Equal(ClevoControl.Core.Automation.AppCategory.Music, D("notepad", null, "x", s).Category);
     }
 }
+
+public class SleepGapTests
+{
+    [Fact]
+    public void A_long_pause_of_the_lighting_loop_counts_as_resume()
+    {
+        var t = new DateTime(2026, 11, 15, 20, 0, 0, DateTimeKind.Utc);
+        Assert.Null(LightingEngine.GapHold(t, t.AddSeconds(1)));     // normal frame
+        Assert.Null(LightingEngine.GapHold(t, t.AddSeconds(10)));    // slow, but no sleep
+        Assert.Equal(t.AddMinutes(30) + LightingEngine.ResumeSettle, LightingEngine.GapHold(t, t.AddMinutes(30)));
+    }
+}

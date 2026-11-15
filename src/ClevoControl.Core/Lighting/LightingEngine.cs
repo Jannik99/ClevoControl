@@ -20,6 +20,20 @@ public sealed class LightingEngine : IDisposable
     private volatile KeyboardSettings _settings;
     private volatile bool _running = true;
     private volatile bool _invalidate = true;
+    private DateTime _lastTick = DateTime.UtcNow;
+    private DateTime _gapHoldUntil;
+
+    /// <summary>
+    /// A pause of the loop this long (wall clock) means the system was asleep. Some laptops (Modern
+    /// Standby) do not report suspend/resume to the app, while the firmware still resets the keyboard to a
+    /// solid colour – so a gap is treated like a resume: wait for the EC, then send everything again.
+    /// </summary>
+    internal static readonly TimeSpan SleepGap = TimeSpan.FromSeconds(15);
+
+    internal static readonly TimeSpan ResumeSettle = TimeSpan.FromSeconds(10);
+
+    /// <summary>Pure decision for the gap check (tests): returns the time until which output is held, or null.</summary>
+    internal static DateTime? GapHold(DateTime last, DateTime now) => now - last > SleepGap ? now + ResumeSettle : null;
 
     private ScreenSampler? _screen;
     private RegionSampler? _region;
@@ -105,6 +119,19 @@ public sealed class LightingEngine : IDisposable
         var sw = Stopwatch.StartNew();
         while (_running)
         {
+            var now = DateTime.UtcNow;
+            if (GapHold(_lastTick, now) is { } hold && !Paused)
+            {
+                Log.Info("Lighting: system was asleep (no resume event) – re-sending the keyboard state shortly");
+                _gapHoldUntil = hold;
+            }
+            _lastTick = now;
+            if (now < _gapHoldUntil)
+            {
+                _invalidate = true; // after the hold everything is sent again
+                _wake.WaitOne(500);
+                continue;
+            }
             if (Paused)
             {
                 _wake.WaitOne(500);

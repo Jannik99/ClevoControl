@@ -9,8 +9,7 @@
   Windows · Linux (experimental)<br>
   <a href="#supported-models">Supported models</a> ·
   <a href="docs/LINUX.md">Linux</a> ·
-  <a href="CONTRIBUTING.md">Contributing</a> ·
-  <a href="#deutsch">🇩🇪 Deutsch</a>
+  <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
 > [!IMPORTANT]
@@ -150,6 +149,21 @@ Reports are very welcome. Sources: [notebookcheck](https://www.notebookcheck.net
 
 > Windows SmartScreen may warn because the build is not code-signed. Click *More info → Run anyway*, or build it yourself.
 
+#### Switching from Clevo's Control Center (and back)
+
+You can keep your vendor's Control Center (Clevo, Obsidian, XMG, …) installed and switch back at any time. ClevoControl installs nothing system-wide and doesn't change the other app's settings.
+
+1. **Keep the Control Center installed.** ClevoControl uses the driver that comes with it.
+2. **Stop it from running at the same time.** Otherwise both apps fight over fans and lighting.
+   - Quit it from its tray icon.
+   - Turn off its autostart (*Settings → Apps → Startup*, or *Task Manager → Startup apps*). Turn off *Control Center*, *LED keyboard settings* and *Flexikey* if present.
+   - ClevoControl's Home page warns you while one of them is still running.
+3. **To go back:**
+   - Quit ClevoControl from its tray icon. The fans return to BIOS control.
+   - Turn off *Start with Windows* in ClevoControl's settings.
+   - Turn the Control Center's autostart back on and start it.
+4. **To remove ClevoControl completely:** delete its folder and `%APPDATA%\ClevoControl`.
+
 ### Linux
 
 Download `ClevoControl-<version>-linux-x64.tar.gz` from the [Releases](../../releases) page and follow [docs/LINUX.md](docs/LINUX.md).
@@ -223,38 +237,3 @@ The codebase is AI-generated; reviews and refactorings are appreciated.
 ## License
 
 [MIT](LICENSE). This project is not affiliated with Clevo Co. “Clevo” is a trademark of its respective owner. Counter-Strike is a trademark of Valve Corporation. OpenRGB, Artemis and Aurora are independent projects.
-
----
-
-<a id="deutsch"></a>
-
-## 🇩🇪 Deutsch
-
-**ClevoControl** ist ein modernes, quelloffenes Control Center für Clevo-Laptops.
-
-> [!IMPORTANT]
-> **Diese Software wurde mit KI generiert** (Claude von Anthropic) und auf einem Clevo N9x0TD_TF getestet. Sie ist ein **inoffizielles** Community-Projekt und steht in **keiner Verbindung zu Clevo**. Nutzung auf eigene Gefahr.
-
-**Funktionen:**
-* Tastatur: freie RGB-Farbe, stufenlose Helligkeit, Weißabgleich, Favoriten, Aus bei Inaktivität
-* Über 20 Effekte, darunter **Ambilight** für Filme und Serien, Musik-Modus, Temperatur-, Akku- und Mikrofon-Anzeige („On Air“), Pomodoro, Tipp-Reaktiv sowie die Hardware-Effekte des Controllers
-* Spiele: Lebens- und Manaleiste vom Bildschirm (jedes Spiel, anti-cheat-sicher) und Counter-Strike 2 per offizieller Game State Integration
-* **OpenRGB-Server**: Artemis, Aurora & Co. inklusive ihrer Spiel-Plugins steuern die Tastatur
-* Lüfter: Live-Werte, Auto, Max oder **eigene Lüfterkurve mit Sicherheitsnetz**, Lüfter je Leistungsprofil, Kürzel „Lüfter voll“
-* **Monitor:** Auslastung und Takt pro CPU-Kern, GPU-Last, Grafikspeicher, Takt und Verbrauch
-* **Kühl-Modi:** Turbo aus oder CPU-Limit über den Windows-Energiesparplan, ganz ohne Treiber, auch wenn das BIOS Undervolting sperrt; dazu eine Hitzewarnung
-* **Tastenbelegung** als FlexiKey-Ersatz mit anklickbarer Tastatur im echten Layout (QWERTZ, QWERTY, AZERTY …, automatisch erkannt): Tastenkombinationen, Texte, Programme, Tasten sperren
-* **Automatik:** erkennt 181 bekannte Apps (Spiele, Videoplayer, Netflix, YouTube, Disney+ & Co. im Browser, Musik, Meetings) und automatisch alle Spiele aus Steam, Epic, GOG, EA, Ubisoft, Battle.net, Riot und Xbox – und wechselt passend die Szene
-* **Schnelleinstellungen** im Windows-11-Stil auf der Startseite, frei zusammenstellbar
-* **System:** BIOS, EC und Treiber auf einen Klick kopiert (für Fehlerberichte), Überblick über Clevos Hintergrundprogramme
-* Ladelimit (FlexiCharger) auf Modellen, die es per Software anbieten (experimentell)
-* Leistungsprofile, Windows-Energiemodus, automatischer Wechsel bei Akku oder Netzteil, niedrigere Bildwiederholrate im Akkubetrieb
-* Akku-Gesundheit, Sound (Lautstärke, Stummschaltung, Mikrofon, Ausgabegerät), Windows-Taste sperren
-* Szenen mit Tastenkürzeln (Strg+Alt+Umschalt+1…9, optional), Tray-Menü, Autostart, Hell- und Dunkelmodus
-* Lokale HTTP-Schnittstelle und Kommandozeilen-Tool `clevoctl`
-
-**Voraussetzung:** Der Clevo-Control-Center-Treiber (`InsydeDCHU.dll`) muss installiert sein. Er wird nicht mitgeliefert.
-
-**Sicherheit der Lüfterkurve:** Ab 70 °C laufen die Lüfter mit mindestens 35 %, ab 80 °C mit mindestens 70 % und ab 88 °C immer mit 100 %. Bei Standby, beim Beenden und bei unplausiblen Sensorwerten übernimmt wieder die Firmware.
-
-Fehler und Erfahrungen mit anderen Modellen bitte als Issue melden, gern mit der Ausgabe von `clevoctl dump`.

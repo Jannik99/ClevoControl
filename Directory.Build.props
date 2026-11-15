@@ -8,7 +8,7 @@
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
-    <Version>0.5.0</Version>
+    <Version>0.5.1</Version>
     <Authors>ClevoControl contributors</Authors>
     <Product>ClevoControl</Product>
     <Copyright>Copyright (c) 2026 ClevoControl contributors</Copyright>
