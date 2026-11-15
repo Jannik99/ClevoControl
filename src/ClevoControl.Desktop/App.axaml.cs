@@ -29,7 +29,15 @@ public partial class App : Application
 
     public ControlCenter? Cc => _cc;
 
-    public override void Initialize() => AvaloniaXamlLoader.Load(this);
+    public override void Initialize()
+    {
+        AvaloniaXamlLoader.Load(this);
+        // Inter (last entry of the font stack in App.axaml) would render "N9x0" as "N9×0" with contextual alternates.
+        Styles.Add(new Avalonia.Styling.Style(x => Avalonia.Styling.Selectors.Is<TopLevel>(x))
+        {
+            Setters = { new Avalonia.Styling.Setter(Avalonia.Controls.Primitives.TemplatedControl.FontFeaturesProperty, new Avalonia.Media.FontFeatureCollection { Avalonia.Media.FontFeature.Parse("-calt") }) },
+        });
+    }
 
     public override void OnFrameworkInitializationCompleted()
     {
@@ -64,6 +72,13 @@ public partial class App : Application
         _cc = new ControlCenter(hw, store);
         _cc.AutoProfiles.Invoke = a => Dispatcher.UIThread.Post(a);
         _cc.HotkeyHandled += msg => Notify("ClevoControl", msg);
+        // Hotkeys switch on/off live (Linux: evdev reader in ControlCenter). Say so when key presses cannot be read.
+        _cc.HotkeysChanged += () =>
+        {
+            if (_cc.Settings.General.SceneHotkeys && _cc.KeyboardInputError is { Length: > 0 } err)
+                Notify("ClevoControl", Loc.T("Tastenkürzel funktionieren nicht: ", "Hotkeys do not work: ") + err);
+        };
+        _cc.StatusChanged += () => Dispatcher.UIThread.Post(BuildTrayMenu);
         _cc.Overheat += msg => Notify(Loc.T("ClevoControl: zu heiß", "ClevoControl: too hot"),
             msg + Loc.T(". Tipp: Lüfter auf Maximum oder „Prozessor-Drosselung“ unter „Leistung“.", ". Tip: fans to maximum or “CPU throttling” under “Performance”."));
 
@@ -82,7 +97,7 @@ public partial class App : Application
             Log.Error("UI error", e.Exception);
             e.Handled = true;
             _ = Ui.MessageAsync(_window, Loc.T("Es ist ein Fehler aufgetreten:\n\n", "An error occurred:\n\n") + e.Exception.Message +
-                Loc.T("\n\nDie App läuft weiter. Details stehen in der Logdatei.", "\n\nThe app keeps running. Details are in the log file."));
+                Loc.T("\n\nDie App läuft weiter. Details stehen in der Logdatei (Info & Support → Logdatei öffnen).", "\n\nThe app keeps running. Details are in the log file (About & support → Open log file)."));
         };
         RegisterSignals();
 
@@ -174,19 +189,66 @@ public partial class App : Application
         _window.Activate();
     }
 
+    /// <summary>
+    /// False when there is (probably) no system tray to come back from: the tray icon could not be created, or on
+    /// Linux no StatusNotifier host runs (e.g. GNOME without the AppIndicator extension). Close-to-tray then
+    /// minimises the window instead of hiding it.
+    /// </summary>
+    public bool TrayAvailable { get; private set; } = true;
+
     private void CreateTray()
     {
-        using var icon = AssetLoader.Open(new Uri("avares://clevocontrol/Assets/icon-256.png"));
-        _tray = new TrayIcon
+        try
         {
-            Icon = new WindowIcon(icon),
-            ToolTipText = "ClevoControl",
-            Menu = new NativeMenu(),
-        };
-        _tray.Clicked += (_, _) => ShowWindow();
-        _tray.Menu.NeedsUpdate += (_, _) => BuildTrayMenu();
-        BuildTrayMenu();
-        TrayIcon.SetIcons(this, [_tray]);
+            using var icon = AssetLoader.Open(new Uri("avares://clevocontrol/Assets/icon-256.png"));
+            _tray = new TrayIcon
+            {
+                Icon = new WindowIcon(icon),
+                ToolTipText = "ClevoControl",
+                Menu = new NativeMenu(),
+            };
+            _tray.Clicked += (_, _) => ShowWindow();
+            _tray.Menu.NeedsUpdate += (_, _) => BuildTrayMenu();
+            BuildTrayMenu();
+            TrayIcon.SetIcons(this, [_tray]);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("No tray icon: " + ex.Message);
+            TrayAvailable = false;
+            return;
+        }
+        if (OperatingSystem.IsLinux())
+            _ = Task.Run(() =>
+            {
+                if (HasStatusNotifierHost() is false)
+                {
+                    Log.Info("No StatusNotifier host (system tray) found: closing the window minimises it instead");
+                    TrayAvailable = false;
+                }
+            });
+    }
+
+    /// <summary>Linux: is a StatusNotifierWatcher on the session bus? null = cannot tell (no dbus-send/busctl).</summary>
+    private static bool? HasStatusNotifierHost()
+    {
+        var reply = Core.Platform.Shell.Run("dbus-send", "--session", "--print-reply", "--dest=org.freedesktop.DBus", "/org/freedesktop/DBus",
+            "org.freedesktop.DBus.NameHasOwner", "string:org.kde.StatusNotifierWatcher");
+        if (reply is not null) return reply.Contains("boolean true", StringComparison.Ordinal);
+        var names = Core.Platform.Shell.Run("busctl", "--user", "--no-pager", "list");
+        if (names is not null) return names.Contains("org.kde.StatusNotifierWatcher", StringComparison.Ordinal);
+        return null;
+    }
+
+    /// <summary>Once: tells the user that closing the window keeps the app running in the tray.</summary>
+    public void ShowTrayHint()
+    {
+        if (_cc is null || _cc.Settings.General.TrayHintShown) return;
+        _cc.Settings.General.TrayHintShown = true;
+        _cc.Store.SaveSoon();
+        Notify("ClevoControl", OperatingSystem.IsWindows()
+            ? Loc.T("ClevoControl läuft im Infobereich weiter. Beenden über Rechtsklick → Beenden.", "ClevoControl keeps running in the notification area. To quit, right-click → Exit.")
+            : Loc.T("ClevoControl läuft in der Systemleiste weiter. Beenden über Rechtsklick → Beenden.", "ClevoControl keeps running in the system tray. To quit, right-click → Exit."));
     }
 
     private void BuildTrayMenu()
@@ -202,7 +264,8 @@ public partial class App : Application
         light.IsChecked = cc.Settings.Keyboard.Enabled;
         menu.Items.Add(light);
 
-        menu.Items.Add(Sub(Loc.T("Szenen", "Scenes"), cc.Settings.Scenes.Select(s => Item(s.Name, () => cc.ApplyScene(s)))));
+        menu.Items.Add(Sub(Loc.T("Szenen", "Scenes"), cc.Settings.Scenes.Select(s =>
+            Radio(s.Name, string.Equals(cc.ActiveScene, s.Name, StringComparison.OrdinalIgnoreCase), () => cc.ApplyScene(s)))));
         menu.Items.Add(Sub(Loc.T("Leistungsprofil", "Performance profile"), Pages.PowerPage.ProfileOrder.Select(p =>
             Radio(Pages.PowerPage.ProfileName(p), cc.Settings.Power.Profile == p, () => { cc.Settings.Power.Profile = p; cc.ApplyPower(); }))));
         menu.Items.Add(Sub(Loc.T("Lüfter", "Fans"), Enum.GetValues<FanMode>().Select(m =>
@@ -243,6 +306,13 @@ public partial class App : Application
     private async Task TakeScreenshots(string folder)
     {
         Directory.CreateDirectory(folder);
+        // CC_THEME=Light/Dark renders the other theme without changing the system setting.
+        RequestedThemeVariant = Environment.GetEnvironmentVariable("CC_THEME") switch
+        {
+            "Light" => Avalonia.Styling.ThemeVariant.Light,
+            "Dark" => Avalonia.Styling.ThemeVariant.Dark,
+            _ => RequestedThemeVariant,
+        };
         _window!.Width = 1120;
         _window.Height = 900;
         var keys = (Environment.GetEnvironmentVariable("CC_SHOTS") ?? string.Join(',', MainWindow.PageKeys)).Split(',');

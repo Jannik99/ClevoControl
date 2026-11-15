@@ -29,6 +29,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        Ui.InstallControlStyles(this);
 
         // Screenshot runs (developer tool) may run next to an installed instance.
         var isScreenshotRun = e.Args.Contains("--screenshots");
@@ -67,8 +68,8 @@ public partial class App : Application
         {
             Log.Error("UI error", args.Exception);
             MessageBox.Show(Loc.T("Es ist ein Fehler aufgetreten:\n\n", "An error occurred:\n\n") + args.Exception.Message +
-                Loc.T("\n\nDie App läuft weiter. Details stehen in der Logdatei (System → Logdatei öffnen).",
-                      "\n\nThe app keeps running. Details are in the log file (System → Open log file)."),
+                Loc.T("\n\nDie App läuft weiter. Details stehen in der Logdatei (Info & Support → Logdatei öffnen).",
+                      "\n\nThe app keeps running. Details are in the log file (About & support → Open log file)."),
                 "ClevoControl", MessageBoxButton.OK, MessageBoxImage.Warning);
             args.Handled = true;
         };
@@ -78,7 +79,9 @@ public partial class App : Application
         _cc.Overheat += msg => Dispatcher.BeginInvoke(() => _tray?.ShowBalloonTip(5000, Loc.T("ClevoControl: zu heiß", "ClevoControl: too hot"),
             msg + Loc.T(". Tipp: Lüfter auf Maximum oder „Prozessor-Drosselung“ unter „Leistung“.", ". Tip: fans to maximum or “CPU throttling” under “Performance”."), Forms.ToolTipIcon.Warning));
         CreateTray();
-        RegisterHotkeys();
+        _cc.HotkeyHandled += msg => Dispatcher.BeginInvoke(() => _tray?.ShowBalloonTip(1500, "ClevoControl", msg, Forms.ToolTipIcon.None));
+        _cc.HotkeysChanged += () => Dispatcher.BeginInvoke(UpdateHotkeys);
+        UpdateHotkeys();
 
         var shotIndex = Array.IndexOf(e.Args, "--screenshots");
         if (shotIndex >= 0 && shotIndex + 1 < e.Args.Length)
@@ -157,7 +160,7 @@ public partial class App : Application
             case PowerModes.Suspend: _cc?.OnSuspend(); break;
             case PowerModes.Resume: _cc?.OnResume(); break;
             case PowerModes.StatusChange:
-                try { _cc?.Power.CheckPowerSource(_cc.Settings.Power); } catch { }
+                try { _cc?.CheckPowerSource(); } catch { }
                 break;
         }
     }
@@ -201,7 +204,9 @@ public partial class App : Application
         foreach (var s in _cc.Settings.Scenes)
         {
             var scene = s;
-            scenes.DropDownItems.Add(scene.Name, null, (_, _) => Dispatcher.Invoke(() => _cc.ApplyScene(scene)));
+            var item = new Forms.ToolStripMenuItem(scene.Name) { Checked = string.Equals(_cc.ActiveScene, scene.Name, StringComparison.OrdinalIgnoreCase) };
+            item.Click += (_, _) => Dispatcher.Invoke(() => _cc.ApplyScene(scene));
+            scenes.DropDownItems.Add(item);
         }
         menu.Items.Add(scenes);
 
@@ -236,38 +241,68 @@ public partial class App : Application
         _cc.ApplyKeyboard();
     }
 
-    // Ctrl+Alt+Shift+1..9 = scenes, Ctrl+Alt+Shift+0 = keyboard light on/off.
+    // Ctrl+Alt+Shift+1..9 = scenes, Ctrl+Alt+Shift+0 = keyboard light on/off, Ctrl+Alt+Shift+F = fans full.
     // Plain Ctrl+Alt is NOT used: on German and many other layouts AltGr == Ctrl+Alt (², ³, {, [, ], }).
-    private void RegisterHotkeys()
+    private static readonly (int Id, uint Vk, string Key)[] HotkeyList =
+        [.. Enumerable.Range(0, 10).Select(i => (100 + i, (uint)(0x30 + i), i.ToString())), (120, 0x46u, "F")];
+
+    private readonly List<int> _registeredHotkeys = [];
+
+    /// <summary>
+    /// Registers or unregisters the global hotkeys to match the setting (called at start and whenever it changes).
+    /// Keys another program already owns are reported in a notification.
+    /// </summary>
+    private void UpdateHotkeys()
     {
-        if (_cc is null || !_cc.Settings.General.SceneHotkeys) return;
-        var p = new HwndSourceParameters("ClevoControlHotkeys") { Width = 0, Height = 0, ParentWindow = new IntPtr(-3) };
-        _hotkeySource = new HwndSource(p);
-        _hotkeySource.AddHook(HotkeyHook);
-        const uint ctrlAlt = 0x0002 | 0x0001 | 0x0004 | 0x4000; // MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT
-        for (var i = 0; i <= 9; i++) RegisterHotKey(_hotkeySource.Handle, 100 + i, ctrlAlt, (uint)(0x30 + i));
-        RegisterHotKey(_hotkeySource.Handle, 120, ctrlAlt, 0x46); // Ctrl+Alt+Shift+F = fans full on/off
+        if (_cc is null) return;
+        var want = _cc.Settings.General.SceneHotkeys && !IsExiting;
+        if (want && _registeredHotkeys.Count == 0)
+        {
+            if (_hotkeySource is null)
+            {
+                var p = new HwndSourceParameters("ClevoControlHotkeys") { Width = 0, Height = 0, ParentWindow = new IntPtr(-3) };
+                _hotkeySource = new HwndSource(p);
+                _hotkeySource.AddHook(HotkeyHook);
+            }
+            const uint mods = 0x0002 | 0x0001 | 0x0004 | 0x4000; // MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT
+            var taken = new List<string>();
+            foreach (var (id, vk, key) in HotkeyList)
+            {
+                if (RegisterHotKey(_hotkeySource.Handle, id, mods, vk)) _registeredHotkeys.Add(id);
+                else taken.Add(key);
+            }
+            if (taken.Count > 0)
+            {
+                Log.Warn("Hotkeys already in use: " + string.Join(", ", taken));
+                _tray?.ShowBalloonTip(5000, "ClevoControl", _cc.HotkeyTakenText(taken), Forms.ToolTipIcon.Warning);
+            }
+        }
+        else if (!want && _registeredHotkeys.Count > 0 && _hotkeySource is not null)
+        {
+            foreach (var id in _registeredHotkeys) UnregisterHotKey(_hotkeySource.Handle, id);
+            _registeredHotkeys.Clear();
+        }
     }
 
     private IntPtr HotkeyHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         const int WM_HOTKEY = 0x0312;
         if (msg != WM_HOTKEY || _cc is null) return IntPtr.Zero;
-        var idx = wParam.ToInt32() - 100;
-        if (idx == 20)
-        {
-            _cc.ToggleFanBoost();
-            _tray?.ShowBalloonTip(1500, "ClevoControl", Loc.T("Lüfter: ", "Fans: ") + Pages.FansPage.ModeName(_cc.Settings.Fan.Mode), Forms.ToolTipIcon.None);
-        }
-        else if (idx == 0) ToggleKeyboard();
-        else if (idx >= 1 && idx <= _cc.Settings.Scenes.Count)
-        {
-            var scene = _cc.Settings.Scenes[idx - 1];
-            _cc.ApplyScene(scene);
-            _tray?.ShowBalloonTip(1500, "ClevoControl", $"{scene.Icon} {scene.Name}", Forms.ToolTipIcon.None);
-        }
+        // ControlCenter does the work and raises HotkeyHandled (balloon tip, see OnStartup).
+        _cc.HandleHotkey(wParam.ToInt32() - 100);
         handled = true;
         return IntPtr.Zero;
+    }
+
+    /// <summary>Once: tells the user that closing the window keeps the app running in the tray.</summary>
+    public void ShowTrayHint()
+    {
+        if (_cc is null || _cc.Settings.General.TrayHintShown) return;
+        _cc.Settings.General.TrayHintShown = true;
+        _cc.Store.SaveSoon();
+        _tray?.ShowBalloonTip(6000, "ClevoControl",
+            Loc.T("ClevoControl läuft im Infobereich weiter. Beenden über Rechtsklick → Beenden.",
+                  "ClevoControl keeps running in the notification area. To quit, right-click → Exit."), Forms.ToolTipIcon.Info);
     }
 
     public void ExitApp()
@@ -275,8 +310,8 @@ public partial class App : Application
         IsExiting = true;
         if (_hotkeySource is not null)
         {
-            for (var i = 0; i <= 9; i++) UnregisterHotKey(_hotkeySource.Handle, 100 + i);
-            UnregisterHotKey(_hotkeySource.Handle, 120);
+            foreach (var id in _registeredHotkeys) UnregisterHotKey(_hotkeySource.Handle, id);
+            _registeredHotkeys.Clear();
             _hotkeySource.Dispose();
         }
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;

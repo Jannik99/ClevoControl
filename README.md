@@ -38,7 +38,7 @@
 | **Fans** | Live RPM/duty/temperatures, auto / max / **custom fan curve** with a hard-coded safety net, fans remembered **per performance profile**, “fans full” hotkey |
 | **Monitor** | Detailed graphs: load and clock **per CPU core**, NVIDIA GPU load, VRAM, clocks, power draw (NVML), temperature and fan history |
 | **Cooling modes** | Turbo off / CPU limit through the Windows power plan – lowers temperatures **without any driver**, even when the BIOS locks undervolting; overheat notification |
-| **Key mapping** | FlexiKey replacement with a clickable QWERTZ keyboard: map keys to shortcuts, text or programs, or disable them |
+| **Key mapping** | FlexiKey replacement with a clickable keyboard in your real layout (QWERTZ, QWERTY, AZERTY …, detected automatically): map keys to shortcuts, text or programs, or disable them |
 | **System** | Model, BIOS, EC firmware, drivers – copied for bug reports with one click; overview of Clevo background software |
 | **Battery** | Health, capacity, cycles; **FlexiCharger** charge limit on models that expose it to software (experimental) |
 | **Performance** | Clevo profiles (Quiet, Power saving, Performance, Entertainment), Windows power mode, automatic AC/battery switching, lower refresh rate on battery |
@@ -243,7 +243,7 @@ The codebase is AI-generated; reviews and refactorings are appreciated.
 * Lüfter: Live-Werte, Auto, Max oder **eigene Lüfterkurve mit Sicherheitsnetz**, Lüfter je Leistungsprofil, Kürzel „Lüfter voll“
 * **Monitor:** Auslastung und Takt pro CPU-Kern, GPU-Last, Grafikspeicher, Takt und Verbrauch
 * **Kühl-Modi:** Turbo aus oder CPU-Limit über den Windows-Energiesparplan, ganz ohne Treiber, auch wenn das BIOS Undervolting sperrt; dazu eine Hitzewarnung
-* **Tastenbelegung** als FlexiKey-Ersatz mit anklickbarer QWERTZ-Tastatur: Tastenkombinationen, Texte, Programme, Tasten sperren
+* **Tastenbelegung** als FlexiKey-Ersatz mit anklickbarer Tastatur im echten Layout (QWERTZ, QWERTY, AZERTY …, automatisch erkannt): Tastenkombinationen, Texte, Programme, Tasten sperren
 * **Automatik:** erkennt 181 bekannte Apps (Spiele, Videoplayer, Netflix, YouTube, Disney+ & Co. im Browser, Musik, Meetings) und automatisch alle Spiele aus Steam, Epic, GOG, EA, Ubisoft, Battle.net, Riot und Xbox – und wechselt passend die Szene
 * **Schnelleinstellungen** im Windows-11-Stil auf der Startseite, frei zusammenstellbar
 * **System:** BIOS, EC und Treiber auf einen Klick kopiert (für Fehlerberichte), Überblick über Clevos Hintergrundprogramme

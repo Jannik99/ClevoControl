@@ -42,26 +42,26 @@ public static class Icons
     {
         var d = new Dictionary<string, MaterialIconKind>();
         void A(string glyph, MaterialIconKind kind) => d.TryAdd(glyph, kind);
-        A(Home, MaterialIconKind.Home); A(Settings, MaterialIconKind.Cog); A(Game, MaterialIconKind.GamepadVariant);
-        A(Keyboard, MaterialIconKind.Keyboard); A(Color, MaterialIconKind.Palette); A(Brightness, MaterialIconKind.Brightness6);
-        A(Lightning, MaterialIconKind.LightningBolt); A(Battery, MaterialIconKind.Battery); A(BatterySaver, MaterialIconKind.Leaf);
-        A(Volume, MaterialIconKind.VolumeHigh); A(Mute, MaterialIconKind.VolumeOff); A(Microphone, MaterialIconKind.Microphone);
+        A(Home, MaterialIconKind.HomeOutline); A(Settings, MaterialIconKind.CogOutline); A(Game, MaterialIconKind.GamepadVariantOutline);
+        A(Keyboard, MaterialIconKind.KeyboardOutline); A(Color, MaterialIconKind.PaletteOutline); A(Brightness, MaterialIconKind.Brightness6);
+        A(Lightning, MaterialIconKind.LightningBoltOutline); A(Battery, MaterialIconKind.BatteryOutline); A(BatterySaver, MaterialIconKind.BatteryHeartVariant);
+        A(Volume, MaterialIconKind.VolumeHigh); A(Mute, MaterialIconKind.VolumeOff); A(Microphone, MaterialIconKind.MicrophoneOutline);
         A(Speaker, MaterialIconKind.Speaker); A(Star, MaterialIconKind.StarOutline); A(Music, MaterialIconKind.Music);
-        A(Video, MaterialIconKind.Video); A(Power, MaterialIconKind.Power); A(Tune, MaterialIconKind.Tune);
+        A(Video, MaterialIconKind.VideoOutline); A(Power, MaterialIconKind.Power); A(Tune, MaterialIconKind.Tune);
         A(Timer, MaterialIconKind.TimerOutline); A(Heart, MaterialIconKind.HeartOutline); A(Thermometer, MaterialIconKind.Thermometer);
-        A(Gauge, MaterialIconKind.Speedometer); A(Lamp, MaterialIconKind.Lamp); A(Bulb, MaterialIconKind.LightbulbOutline);
-        A(Shuffle, MaterialIconKind.Shuffle); A(Pulse, MaterialIconKind.Pulse); A(Diagnostic, MaterialIconKind.ChartLine);
+        A(Gauge, MaterialIconKind.Speedometer); A(Lamp, MaterialIconKind.LampOutline); A(Bulb, MaterialIconKind.LightbulbOutline);
+        A(Shuffle, MaterialIconKind.Shuffle); A(Pulse, MaterialIconKind.Pulse); A(Diagnostic, MaterialIconKind.Pulse);
         A(Monitor, MaterialIconKind.Monitor); A(Chip, MaterialIconKind.Chip); A(Laptop, MaterialIconKind.Laptop);
         A(Swap, MaterialIconKind.SwapHorizontal); A(Bell, MaterialIconKind.BellOutline); A(Layers, MaterialIconKind.LayersOutline);
         A(Frame, MaterialIconKind.CropFree); A(Fire, MaterialIconKind.Fire); A(Chart, MaterialIconKind.ChartBar);
         A(Puzzle, MaterialIconKind.PuzzleOutline); A(History, MaterialIconKind.History); A(Info, MaterialIconKind.InformationOutline);
         A(Warning, MaterialIconKind.AlertOutline); A(Add, MaterialIconKind.Plus); A(Delete, MaterialIconKind.DeleteOutline);
-        A(Edit, MaterialIconKind.PencilOutline); A(Up, MaterialIconKind.ChevronUp); A(Refresh, MaterialIconKind.Refresh);
+        A(Edit, MaterialIconKind.PencilOutline); A(Up, MaterialIconKind.ArrowUp); A(Refresh, MaterialIconKind.Refresh);
         A(OpenExternal, MaterialIconKind.OpenInNew); A(Broadcast, MaterialIconKind.AccessPoint); A(Circle, MaterialIconKind.CircleOutline);
-        A(Sparkle, MaterialIconKind.AutoFix); A(Plug, MaterialIconKind.PowerPlug); A(Moon, MaterialIconKind.WeatherNight);
+        A(Sparkle, MaterialIconKind.CreationOutline); A(Plug, MaterialIconKind.PowerPlug); A(Moon, MaterialIconKind.WeatherNight);
         A(Shield, MaterialIconKind.ShieldOutline); A(Target, MaterialIconKind.Target); A(Code, MaterialIconKind.CodeBraces);
-        A(Save, MaterialIconKind.ContentSave); A(Fan, MaterialIconKind.Fan); A(Max, MaterialIconKind.ArrowExpandUp);
-        A(Auto, MaterialIconKind.Autorenew); A(Briefcase, MaterialIconKind.BriefcaseOutline); A(Brush, MaterialIconKind.Brush);
+        A(Save, MaterialIconKind.ContentSaveOutline); A(Fan, MaterialIconKind.Fan); A(Max, MaterialIconKind.ArrowExpand);
+        A(Auto, MaterialIconKind.Cogs); A(Briefcase, MaterialIconKind.BriefcaseOutline); A(Brush, MaterialIconKind.BrushOutline);
         A("", MaterialIconKind.Check); // check mark used by the quick-tile editor
         return d;
     }

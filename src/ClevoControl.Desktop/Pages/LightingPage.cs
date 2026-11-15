@@ -15,7 +15,7 @@ namespace ClevoControl.Desktop.Pages;
 public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
 {
     private KeyboardSettings Kb => Cc.Settings.Keyboard;
-    private ContentControl? _options;
+    private ContentControl? _options, _color;
     private Border? _preview;
     private DropShadowEffect? _glow;
     private DispatcherTimer? _timer;
@@ -104,7 +104,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
             var header = Ui.Section(title);
             if (gallery.Children.Count > 0) header.Margin = new Thickness(0, 12, 0, 8);
             gallery.Children.Add(header);
-            var wrap = new WrapPanel();
+            var wrap = Ui.TileGrid(150, 8);
             foreach (var e in kinds)
             {
                 var effect = e;
@@ -115,6 +115,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
                     Kb.Enabled = true;
                     Cc.ApplyKeyboard();
                     _options!.Content = BuildOptions();
+                    _color!.Content = BuildColorCard();
                 }, 150));
             }
             gallery.Children.Add(wrap);
@@ -123,14 +124,14 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
         AddGroup(Loc.T("Stimmung", "Ambience"), LightingEffectKind.Candle, LightingEffectKind.Daylight, LightingEffectKind.Lava, LightingEffectKind.Fire, LightingEffectKind.Heartbeat, LightingEffectKind.Police);
         AddGroup(Loc.T("Reagiert auf …", "Reacts to …"), LightingEffectKind.Ambient, LightingEffectKind.Music, LightingEffectKind.Reactive, LightingEffectKind.Temperature, LightingEffectKind.CpuLoad, LightingEffectKind.Battery, LightingEffectKind.OnAir, LightingEffectKind.Pomodoro);
         AddGroup(Loc.T("Spiele", "Games"), LightingEffectKind.ScreenRegion, LightingEffectKind.GameCs2);
-        root.Children.Add(Ui.Card(gallery, Loc.T("Effekt", "Effect"), icon: Icons.Sparkle));
+        root.Children.Add(Ui.Card(gallery, Loc.T("Effekt", "Effect"), icon: Icons.Sparkle, indent: false));
 
-        // Color + options side by side
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,8,*") };
-        var colorCard = BuildColorCard();
+        // One column in the order of use: effect → its options → color → general.
         _options = new ContentControl { Content = BuildOptions() };
-        var right = new StackPanel();
-        right.Children.Add(Ui.Card(Ui.Stack(
+        root.Children.Add(_options);
+        _color = new ContentControl { Content = BuildColorCard() };
+        root.Children.Add(_color);
+        root.Children.Add(Ui.Card(Ui.Stack(
             Ui.Switch(Loc.T("Beleuchtung an", "Light on"), Kb.Enabled, on => { Kb.Enabled = on; Cc.ApplyKeyboard(); }),
             Ui.SliderRow(Loc.T("Helligkeit", "Brightness"), 0, 100, Kb.Brightness, v => { Kb.Brightness = (int)v; Cc.ApplyKeyboard(); }, v => $"{v:0} %"),
             Ui.Row(Loc.T("Aus bei Inaktivität", "Off when idle"),
@@ -138,11 +139,6 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
                     m => { Kb.IdleTimeoutMinutes = m; Cc.ApplyKeyboard(); }, 120),
                 Loc.T("Geht beim nächsten Tastendruck wieder an", "Turns back on with the next key press"), 0)
         ), Loc.T("Allgemein", "General"), icon: Icons.Brightness));
-        right.Children.Add(_options);
-        Grid.SetColumn(right, 2);
-        grid.Children.Add(colorCard);
-        grid.Children.Add(right);
-        root.Children.Add(grid);
 
         root.Children.Add(BuildWhiteBalance());
         return root;
@@ -150,8 +146,23 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
 
     public override void OnLeave() => _timer?.Stop();
 
+    /// <summary>
+    /// False for effects whose colors are computed by the engine (see LightingEngine.Render): the color picker has no effect there.
+    /// Music (pulse mode), health bar and CS2 (brightness display / waiting) and On Air (idle) still use the color.
+    /// </summary>
+    public static bool UsesColor(LightingEffectKind e) => e is not (LightingEffectKind.Spectrum or LightingEffectKind.Daylight
+        or LightingEffectKind.Ambient or LightingEffectKind.Temperature or LightingEffectKind.Battery or LightingEffectKind.CpuLoad
+        or LightingEffectKind.Pomodoro or LightingEffectKind.Lava or LightingEffectKind.Fire or LightingEffectKind.Police);
+
+    /// <summary>Only these effects read <see cref="KeyboardSettings.SecondaryColor"/>.</summary>
+    public static bool UsesSecondColor(LightingEffectKind e) => e is LightingEffectKind.Gradient or LightingEffectKind.Reactive;
+
     private Border BuildColorCard()
     {
+        if (!UsesColor(Kb.Effect))
+            return Ui.Card(Ui.Text(Loc.T("Dieser Effekt bestimmt die Farben selbst.", "This effect chooses its own colours."), 13, sub: true),
+                Loc.T("Farbe", "Color"), icon: Icons.Color);
+
         var picker = new ColorPicker(Kb.Color);
         picker.ColorChanged += c =>
         {
@@ -160,55 +171,91 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
             Cc.ApplyKeyboard();
         };
 
+        var left = new StackPanel();
         var favorites = new WrapPanel { Margin = new Thickness(0, 14, 0, 0) };
-        void FillFavorites()
+        void FillFavorites(int focus = -1)
         {
             favorites.Children.Clear();
             foreach (var f in Kb.Favorites.ToList())
             {
                 var col = f;
-                // Click handled here (not by Ui.Swatch) so a right click does not also select the color.
-                var sw = Ui.Swatch(col, 28, null, col.ToHex() + Loc.T(" · Rechtsklick: entfernen", " · right-click: remove"));
-                sw.PointerReleased += (_, e) =>
+                void Select()
                 {
-                    if (e.InitialPressMouseButton == MouseButton.Right)
-                    {
-                        Kb.Favorites.Remove(col);
-                        Cc.ApplyKeyboard();
-                        Dispatcher.UIThread.Post(FillFavorites);
-                    }
-                    else if (e.InitialPressMouseButton == MouseButton.Left)
-                    {
-                        picker.SetColor(col);
-                        Kb.Color = col;
-                        Cc.ApplyKeyboard();
-                    }
+                    picker.SetColor(col);
+                    Kb.Color = col;
+                    Cc.ApplyKeyboard();
+                }
+                // Click handled here (not by Ui.Swatch) so a right click (context menu) does not also select the color.
+                var sw = Ui.Swatch(col, 30, null, col.ToHex() + Loc.T(" · Entf oder Rechtsklick: entfernen", " · Delete or right-click: remove"));
+                Ui.Clickable(sw, col.ToHex(), Select);
+                sw.PointerReleased += (_, e) => { if (e.InitialPressMouseButton == MouseButton.Left) Select(); };
+                var item = new MenuItem { Header = Loc.T("Aus Favoriten entfernen", "Remove from favourites"), Icon = Ui.Icon(Icons.Delete, 14) };
+                item.Click += (_, _) => Dispatcher.UIThread.Post(() => RemoveFavorite(col));
+                sw.ContextMenu = new ContextMenu { Items = { item } };
+                sw.KeyDown += (_, e) =>
+                {
+                    if (e.Key != Avalonia.Input.Key.Delete) return;
+                    e.Handled = true;
+                    RemoveFavorite(col);
                 };
                 favorites.Children.Add(sw);
             }
-            var add = new Button
+            var add = Ui.IconButton(Icons.Add, Loc.T("Aktuelle Farbe merken", "Save current color"), () =>
             {
-                Content = "+", Width = 28, Height = 28, Padding = new Thickness(0),
-                HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center,
-                VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 8, 8),
-            };
-            ToolTip.SetTip(add, Loc.T("Aktuelle Farbe merken", "Save current color"));
-            add.Click += (_, _) => { if (!Kb.Favorites.Contains(Kb.Color)) Kb.Favorites.Add(Kb.Color); Cc.ApplyKeyboard(); FillFavorites(); };
+                if (!Kb.Favorites.Contains(Kb.Color)) Kb.Favorites.Add(Kb.Color);
+                Cc.ApplyKeyboard();
+                FillFavorites(Kb.Favorites.Count);
+            });
+            add.Width = add.Height = 30;
+            add.MinWidth = add.MinHeight = 0;
+            add.Padding = new Thickness(0);
+            add.CornerRadius = new CornerRadius(15);
+            add.HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center;
+            add.VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Center;
             favorites.Children.Add(add);
+            if (focus >= 0 && favorites.Children.Count > 0)
+            {
+                var target = favorites.Children[Math.Min(focus, favorites.Children.Count - 1)];
+                Dispatcher.UIThread.Post(() => target.Focus(), DispatcherPriority.Loaded);
+            }
+        }
+        void RemoveFavorite(RgbColor col)
+        {
+            var index = Kb.Favorites.IndexOf(col);
+            if (index < 0) return;
+            Kb.Favorites.RemoveAt(index);
+            Cc.ApplyKeyboard();
+            FillFavorites(index);
+            Ui.ShowUndo(left, Loc.T($"{col.ToHex()} aus den Favoriten entfernt.", $"{col.ToHex()} removed from favourites."), () =>
+            {
+                if (!Kb.Favorites.Contains(col)) Kb.Favorites.Insert(Math.Min(index, Kb.Favorites.Count), col);
+                Cc.ApplyKeyboard();
+                FillFavorites(index);
+            });
         }
         FillFavorites();
+        left.Children.Add(picker);
+        left.Children.Add(favorites);
 
-        var secondary = new ColorPicker(Kb.SecondaryColor);
-        secondary.ColorChanged += c => { Kb.SecondaryColor = c; Cc.ApplyKeyboard(); };
-        var expander = new Expander
+        // Primary color left, second color (only for effects that use it) right.
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,24,*") };
+        grid.Children.Add(left);
+        if (UsesSecondColor(Kb.Effect))
         {
-            Header = Ui.Text(Loc.T("Zweite Farbe (Farbverlauf, Tastendruck)", "Second color (gradient, key press)"), 13, sub: true),
-            Content = secondary,
-            Margin = new Thickness(0, 12, 0, 0),
-            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
-        };
-        return Ui.Card(Ui.Stack(picker, favorites, expander), Loc.T("Farbe", "Color"), icon: Icons.Color);
+            var secondary = new ColorPicker(Kb.SecondaryColor);
+            secondary.ColorChanged += c => { Kb.SecondaryColor = c; Cc.ApplyKeyboard(); };
+            var expander = new Expander
+            {
+                Header = Ui.Text(Kb.Effect == LightingEffectKind.Reactive ? Loc.T("Zweite Farbe (Aufleuchten)", "Second color (flash)") : Loc.T("Zweite Farbe", "Second color"), 13, sub: true),
+                Content = secondary,
+                IsExpanded = true,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top,
+            };
+            Grid.SetColumn(expander, 2);
+            grid.Children.Add(expander);
+        }
+        return Ui.Card(grid, Loc.T("Farbe", "Color"), icon: Icons.Color, indent: false);
     }
 
     private Control BuildOptions()

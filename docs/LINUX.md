@@ -39,7 +39,7 @@ Run either the app *or* the service – the app stops the service automatically 
 | Ambient light, screen region, game health bars | ⚠️ | X11 ✅ · Wayland on wlroots (Sway, Hyprland) with `grim` ✅ · GNOME/KDE on Wayland ❌ (screen capture is not allowed there). |
 | Automatic scenes per app | ⚠️ | X11 ✅ and KDE Wayland with [kdotool](https://github.com/jinliu/kdotool) ✅: the focused window. GNOME/other Wayland: ClevoControl recognises *running* games and apps instead (games under Steam/Proton included). |
 | Reactive typing effect, scene hotkeys (Ctrl+Alt+Shift+0…9, +F) | ✅ | Reads `/dev/input` – your user must be in the group `input` (installer option `--with-input`). |
-| Key mapping, Super key lock | ⚠️ | Exported as a [keyd](https://github.com/rvaiya/keyd) configuration (*Key mapping* page) instead of grabbing the keyboard. Program launches are not converted – use your desktop's shortcut settings. |
+| Key mapping, Super key lock | ⚠️ | Exported as a [keyd](https://github.com/rvaiya/keyd) configuration (*Key mapping* page) instead of grabbing the keyboard. The keyboard layout is detected from GNOME, KDE, X11 or `localectl` (or chosen on the page); keys are matched by position, so the file works with any layout. Program launches are not converted – use your desktop's shortcut settings. |
 | Keyboard off when idle | ⚠️ | GNOME (also Wayland) ✅, X11 with `xprintidle` ✅, KDE Wayland ❌. |
 | Sensors page | ✅ | CPU per core, NVIDIA via NVML, AMD GPU load; Intel GPU load ❌. |
 | OpenRGB SDK server, local HTTP API, Counter-Strike 2 | ✅ | |

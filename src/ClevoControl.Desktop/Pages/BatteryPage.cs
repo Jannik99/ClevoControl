@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using ClevoControl.Core;
 using ClevoControl.Core.Services;
 
@@ -8,6 +10,8 @@ namespace ClevoControl.Desktop.Pages;
 
 public sealed class BatteryPage(ControlCenter cc) : AppPage(cc)
 {
+    private DispatcherTimer? _timer;
+
     private Control ChargeLimitCard()
     {
         var info = Cc.Hardware.ReadChargeLimit();
@@ -20,72 +24,122 @@ public sealed class BatteryPage(ControlCenter cc) : AppPage(cc)
                     : Loc.T("Der Akkutreiber bietet keine Ladeschwellen (charge_control_*_threshold in /sys/class/power_supply). Falls vorhanden, findest du FlexiCharger im BIOS-Setup.",
                           "The battery driver offers no charge thresholds (charge_control_*_threshold in /sys/class/power_supply). If available, you find FlexiCharger in the BIOS setup."), null);
         }
+
+        // The controls are a draft: nothing is written to the EC until "Apply" is clicked.
+        var applied = info;
         bool enabled = info.Enabled;
-        int start = info.StartOptions.Contains(info.Start) ? info.Start : info.StartOptions[0];
         int stop = info.StopOptions.Contains(info.Stop) ? info.Stop : info.StopOptions[^1];
-        var status = Ui.Text("", 12, sub: true);
-        void Save()
+        int start = info.StartOptions.Contains(info.Start) ? info.Start : info.StartOptions[0];
+
+        var status = new StackPanel { IsVisible = false, Margin = new Thickness(0, 8, 0, 0) };
+        void ShowStatus(Control? c)
         {
+            status.Children.Clear();
+            if (c is not null)
+            {
+                c.Margin = new Thickness(0);
+                status.Children.Add(c);
+            }
+            status.IsVisible = c is not null;
+        }
+
+        Button apply = null!;
+        apply = Ui.Button(Loc.T("Übernehmen", "Apply"), () => _ = ApplyAsync(), accent: true);
+        apply.HorizontalAlignment = HorizontalAlignment.Left;
+        void UpdateApply()
+        {
+            var dirty = enabled != applied.Enabled || (enabled && (start != applied.Start || stop != applied.Stop));
+            apply.IsEnabled = start < stop && dirty;
+        }
+
+        // Start options are filtered to values below the chosen stop.
+        var startCombo = new ComboBox { Width = 120 };
+        void FillStart()
+        {
+            var options = info.StartOptions.Where(o => o < stop).ToList();
+            if (!options.Contains(start)) start = options.Count > 0 ? options[^1] : start;
+            startCombo.Items.Clear();
+            foreach (var o in options)
+            {
+                var item = new ComboBoxItem { Content = $"{o} %", Tag = o };
+                startCombo.Items.Add(item);
+                if (o == start) startCombo.SelectedItem = item;
+            }
+        }
+        FillStart();
+        startCombo.SelectionChanged += (_, _) =>
+        {
+            if (startCombo.SelectedItem is ComboBoxItem { Tag: int v }) start = v;
+            UpdateApply();
+        };
+        var stopCombo = Ui.Combo(info.StopOptions.Select(o => (o, $"{o} %")), stop, v => { stop = v; FillStart(); UpdateApply(); }, 120);
+
+        var startRow = Ui.Row(Loc.T("Laden starten unter", "Start charging below"), startCombo);
+        var stopRow = Ui.Row(Loc.T("Laden stoppen bei", "Stop charging at"), stopCombo);
+        void UpdateRows() => startRow.IsEnabled = stopRow.IsEnabled = enabled;
+        UpdateRows();
+        UpdateApply();
+
+        async Task ApplyAsync()
+        {
+            if (start >= stop) return;
+            if (enabled && !applied.Enabled &&
+                !await Ui.ConfirmAsync(Owner, Loc.T("Ladelimit ist auf deinem Modell ungetestet. Bei Problemen schaltest du es hier oder im BIOS (FlexiCharger) wieder aus. Fortfahren?",
+                    "The charge limit is untested on your model. If there are problems, turn it off here or in the BIOS (FlexiCharger). Continue?")))
+                return;
             try
             {
-                if (start >= stop) { status.Text = Loc.T("Start muss unter Stopp liegen.", "Start must be below stop."); return; }
                 Cc.Hardware.SetChargeLimit(enabled, start, stop);
-                status.Text = Loc.T("Gespeichert.", "Saved.");
+                var back = Cc.Hardware.ReadChargeLimit();
+                var ok = back is not null && back.Enabled == enabled && (!enabled || (back.Start == start && back.Stop == stop));
+                if (back is not null) applied = back;
+                if (ok)
+                {
+                    ShowStatus(Ui.Text(enabled
+                        ? Loc.T($"Gespeichert – Laden stoppt bei {stop} %", $"Saved – charging stops at {stop} %")
+                        : Loc.T("Gespeichert – Ladelimit aus", "Saved – charge limit off"), 12.5, sub: true));
+                }
+                else
+                {
+                    var got = back is null ? "–" : back.Enabled ? $"{back.Start} % – {back.Stop} %" : Loc.T("aus", "off");
+                    ShowStatus(Ui.InfoBar(Loc.T($"Dein Modell meldet nach dem Schreiben andere Werte ({got}). Das Ladelimit wirkt hier vermutlich nicht – schalte es im Zweifel im BIOS (FlexiCharger) ein.",
+                        $"Your model reports different values after writing ({got}). The charge limit probably does not work here – if in doubt, enable it in the BIOS (FlexiCharger)."), true));
+                }
             }
             catch (UnauthorizedAccessException) when (!OperatingSystem.IsWindows())
             {
-                status.Text = Loc.T("Keine Schreibrechte. Installiere die udev-Regel (contrib/linux/install.sh) und melde dich neu an.",
-                    "No write permission. Install the udev rule (contrib/linux/install.sh) and sign in again.");
+                ShowStatus(Ui.InfoBar(Loc.T("Keine Schreibrechte. Installiere die udev-Regel (contrib/linux/install.sh) und melde dich neu an.",
+                    "No write permission. Install the udev rule (contrib/linux/install.sh) and sign in again."), true));
             }
-            catch (Exception ex) { status.Text = ex.Message; }
+            catch (Exception ex)
+            {
+                Log.Error("Charge limit", ex);
+                ShowStatus(Ui.InfoBar(Loc.T("Das Ladelimit konnte nicht geschrieben werden. Details stehen im Log.",
+                    "The charge limit could not be written. Details are in the log."), true));
+            }
+            UpdateApply();
         }
+
         var s = Ui.Stack(
-            Ui.Switch(Loc.T("Ladelimit aktiv", "Charge limit active"), enabled, v => { enabled = v; Save(); },
+            Ui.Switch(Loc.T("Ladelimit aktiv", "Charge limit active"), enabled, v => { enabled = v; UpdateRows(); UpdateApply(); },
                 Loc.T("Schont den Akku, wenn der Laptop meist am Netzteil hängt.", "Protects the battery if the laptop is mostly plugged in.")),
-            Ui.Row(Loc.T("Laden starten unter", "Start charging below"), Ui.Combo(info.StartOptions.Select(o => (o, $"{o} %")), start, v => { start = v; Save(); }, 120)),
-            Ui.Row(Loc.T("Laden stoppen bei", "Stop charging at"), Ui.Combo(info.StopOptions.Select(o => (o, $"{o} %")), stop, v => { stop = v; Save(); }, 120)),
+            startRow,
+            stopRow,
             Ui.InfoBar(OperatingSystem.IsWindows()
                 ? Loc.T("Experimentell: nutzt dieselben Befehle wie Clevos Control Center, auf diesem Modell aber noch nicht von uns getestet.",
                     "Experimental: uses the same commands as Clevo's Control Center, but not yet tested by us on this model.")
                 : Loc.T("Experimentell: nutzt die Ladeschwellen des Kernels (/sys/class/power_supply), auf diesem Modell aber noch nicht von uns getestet.",
                     "Experimental: uses the kernel's charge thresholds (/sys/class/power_supply), but not yet tested by us on this model."), true),
+            apply,
             status);
         return Ui.Card(s, Loc.T("Ladelimit (FlexiCharger)", "Charge limit (FlexiCharger)"), icon: Icons.BatterySaver);
-    }
-
-    /// <summary>Refresh rate: the biggest battery saver on high-Hz laptop panels.</summary>
-    private Border RefreshRateCard()
-    {
-        var p = Cc.Settings.Power;
-        var rates = DisplayService.GetRefreshRates();
-        var s = new StackPanel();
-        if (rates.Count > 1)
-        {
-            s.Children.Add(Ui.Row(Loc.T("Bildwiederholrate jetzt", "Refresh rate now"), Ui.Combo(rates.Select(r => (r, $"{r} Hz")), DisplayService.GetRefreshRate(),
-                r => DisplayService.SetRefreshRate(r), 120)));
-            s.Children.Add(Ui.Switch(Loc.T("Im Akkubetrieb automatisch senken", "Lower automatically on battery"), p.LowRefreshOnBattery,
-                v => { p.LowRefreshOnBattery = v; Cc.ApplyPower(); }, Loc.T("Spart spürbar Strom. Am Netzteil wieder die höchste Rate.", "Saves noticeable power. Highest rate again when plugged in.")));
-            s.Children.Add(Ui.Row(Loc.T("Rate im Akkubetrieb", "Rate on battery"), Ui.Combo(rates.Select(r => (r, $"{r} Hz")), rates.OrderBy(r => Math.Abs(r - p.BatteryRefreshRate)).First(),
-                r => { p.BatteryRefreshRate = r; Cc.ApplyPower(); }, 120), bottom: 0));
-        }
-        else if (rates.Count == 0 && !OperatingSystem.IsWindows())
-        {
-            // Linux: refresh rates come from xrandr; under Wayland change it in the desktop's display settings.
-            s.Children.Add(Ui.Text(Loc.T("Die Bildwiederholrate lässt sich auf diesem Desktop nicht auslesen oder ändern (braucht X11 mit xrandr). Unter Wayland stellst du sie in den Bildschirmeinstellungen deines Desktops ein.",
-                "The refresh rate cannot be read or changed on this desktop (needs X11 with xrandr). On Wayland, set it in your desktop's display settings."), 12.5, sub: true));
-        }
-        else
-        {
-            s.Children.Add(Ui.Text(Loc.T($"Dein Bildschirm unterstützt nur {DisplayService.GetRefreshRate()} Hz – hier gibt es nichts einzustellen.", $"Your display only supports {DisplayService.GetRefreshRate()} Hz – nothing to adjust here."), 12.5, sub: true));
-        }
-        return Ui.Card(s, Loc.T("Bildwiederholrate", "Refresh rate"), icon: Icons.Monitor);
     }
 
     public override Control Build()
     {
         var root = new StackPanel();
         root.Children.Add(Ui.PageTitle(Loc.T("Akku", "Battery")));
-        root.Children.Add(Ui.PageSubtitle(Loc.T("Zustand, Kapazität und Verschleiß deines Akkus.", "Condition, capacity and wear of your battery.")));
+        root.Children.Add(Ui.PageSubtitle(Loc.T("Zustand, Verschleiß und Ladelimit", "Health, wear and charge limit")));
 
         var b = BatteryService.Read();
         if (!b.Present)
@@ -94,13 +148,13 @@ public sealed class BatteryPage(ControlCenter cc) : AppPage(cc)
             return root;
         }
 
-        var big = Ui.Text($"{b.Percent} %", 40, true);
-        var state = Ui.Text(b.Charging ? Loc.T("Wird geladen", "Charging") : b.OnAc ? Loc.T("Am Netzteil", "On AC power") : Loc.T("Akkubetrieb", "On battery"), 14, sub: true);
+        var big = Ui.Text("", 40, true);
+        var state = Ui.Text("", 14, sub: true);
         var bar = new ProgressBar
         {
-            Height = 10, MinHeight = 10, Maximum = 100, Value = b.Percent, Margin = new Thickness(0, 12, 0, 0), BorderThickness = new Thickness(0),
+            Height = 10, MinHeight = 10, Maximum = 100, Margin = new Thickness(0, 12, 0, 0), BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(5),
-            Background = new SolidColorBrush(Color.FromRgb(50, 56, 71)), Foreground = RgbColor.FromHsv(120 * b.Percent / 100.0, 0.75, 0.9).ToBrush(),
+            Background = new SolidColorBrush(Color.FromRgb(50, 56, 71)),
         };
         root.Children.Add(Ui.Card(Ui.Stack(big, state, bar)));
 
@@ -113,7 +167,11 @@ public sealed class BatteryPage(ControlCenter cc) : AppPage(cc)
         Add(Loc.T("Verbleibend", "Remaining"), Mwh(b.RemainingCapacityMWh));
         Add(Loc.T("Ladezyklen", "Cycle count"), b.CycleCount?.ToString() ?? "–");
         Add(Loc.T("Spannung", "Voltage"), b.Voltage is { } v ? $"{v:0.00} V" : "–");
-        Add(b.RateMw is > 0 ? Loc.T("Ladeleistung", "Charge rate") : Loc.T("Verbrauch", "Power draw"), b.RateMw is { } r && r != 0 ? $"{Math.Abs(r) / 1000.0:0.0} W" : "–");
+        // Power draw: label and value are refreshed by the timer.
+        var rateValue = Ui.Text("", 13.5, true);
+        var rateRow = Ui.Row("", rateValue, bottom: 10);
+        var rateLabel = (TextBlock)((StackPanel)rateRow.Children[0]).Children[0];
+        rows.Children.Add(rateRow);
         if (b.Remaining is { } rem)
             Add(OperatingSystem.IsWindows() ? Loc.T("Restlaufzeit (Windows)", "Time left (Windows)") : Loc.T("Restlaufzeit (System)", "Time left (system)"),
                 $"{(int)rem.TotalHours} h {rem.Minutes:00} min");
@@ -122,7 +180,29 @@ public sealed class BatteryPage(ControlCenter cc) : AppPage(cc)
         root.Children.Add(Ui.Card(rows, Loc.T("Details", "Details"), icon: Icons.Info));
         root.Children.Add(ChargeLimitCard());
 
-        root.Children.Add(RefreshRateCard());
+        void Show(BatteryInfo x)
+        {
+            big.Text = $"{x.Percent} %";
+            state.Text = x.Charging ? Loc.T("Wird geladen", "Charging") : x.OnAc ? Loc.T("Am Netzteil", "On AC power") : Loc.T("Akkubetrieb", "On battery");
+            bar.Value = x.Percent;
+            bar.Foreground = RgbColor.FromHsv(120 * x.Percent / 100.0, 0.75, 0.9).ToBrush();
+            rateLabel.Text = x.RateMw is > 0 ? Loc.T("Ladeleistung", "Charge rate") : Loc.T("Verbrauch", "Power draw");
+            rateValue.Text = x.RateMw is { } r && r != 0 ? $"{Math.Abs(r) / 1000.0:0.0} W" : "–";
+        }
+        Show(b);
+        _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        _timer.Tick += (_, _) =>
+        {
+            try
+            {
+                var now = BatteryService.Read();
+                if (now.Present) Show(now);
+            }
+            catch (Exception ex) { Log.Error("Battery refresh", ex); _timer?.Stop(); }
+        };
+        _timer.Start();
         return root;
     }
+
+    public override void OnLeave() => _timer?.Stop();
 }

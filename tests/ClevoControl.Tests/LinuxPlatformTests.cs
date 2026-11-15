@@ -174,8 +174,8 @@ public class LinuxPlatformTests
         Assert.Contains("capslock = noop", conf);
         Assert.Contains("leftmeta = noop", conf);
         Assert.Contains("[control]", conf);
-        Assert.Contains("y = C-S-esc", conf);           // QWERTZ Z sits on the US Y key
-        Assert.Contains("f12 = macro(Hello space World)", conf);
+        Assert.Contains("z = C-S-esc", conf);           // trigger keys are physical positions (US names)
+        Assert.Contains("f12 = macro(S-h e l l o space S-w o r l d)", conf);
         Assert.Contains("# not converted: F11", conf);
         Assert.Null(KeydConfig.Text("50%"));
     }

@@ -27,6 +27,7 @@ public sealed class KeysPage(ControlCenter cc) : AppPage(cc)
     private VirtualKeyboard? _keyboard;
     private ContentControl? _editor;
     private StackPanel? _list;
+    private static (string Message, Action Undo)? _pendingUndo; // shown after the page has been rebuilt
     private TextBox? _keydText;
     private TextBox? _keydCommand;
     private string? _savedPath;
@@ -47,7 +48,7 @@ public sealed class KeysPage(ControlCenter cc) : AppPage(cc)
         _ => Icons.Power,
     };
 
-    /// <summary>"Strg+Umschalt+F5" style name of a mapping's trigger, using the German key labels.</summary>
+    /// <summary>"Strg+Umschalt+F5" style name of a mapping's trigger, using the legends of the real keyboard layout.</summary>
     public static string TriggerName(KeyMapping m)
     {
         var parts = new List<string>();
@@ -80,16 +81,18 @@ public sealed class KeysPage(ControlCenter cc) : AppPage(cc)
 
         _keyboard = new VirtualKeyboard(R.ShowNumpad) { Margin = new Thickness(0, 0, 0, 12) };
         _keyboard.KeySelected += (vk, _) => ShowEditor(vk);
-        var legend = new StackPanel { Orientation = Orientation.Horizontal };
+        var legend = new WrapPanel();
         var dot = new Border { Width = 14, Height = 14, CornerRadius = new CornerRadius(3), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
         Ui.SetRes(dot, Border.BackgroundProperty, Ui.Accent);
         legend.Children.Add(dot);
-        var mappedText = Ui.Text(Loc.T("belegt", "mapped"), 12, sub: true);
+        var mappedText = Ui.Text(Loc.T("belegt", "mapped"), 14, sub: true);
+        mappedText.Margin = new Thickness(0);
         mappedText.VerticalAlignment = VerticalAlignment.Center;
         legend.Children.Add(mappedText);
-        var numpad = new CheckBox { Content = Loc.T("Ziffernblock anzeigen", "Show number pad"), IsChecked = R.ShowNumpad, Margin = new Thickness(24, 0, 0, 0) };
+        var numpad = new CheckBox { Content = Loc.T("Ziffernblock anzeigen", "Show number pad"), IsChecked = R.ShowNumpad, Margin = new Thickness(24, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         numpad.IsCheckedChanged += (_, _) => { R.ShowNumpad = numpad.IsChecked == true; Cc.Store.SaveSoon(); Reload(); };
         legend.Children.Add(numpad);
+        legend.Children.Add(LayoutChooser());
         root.Children.Add(Ui.Card(Ui.Stack(_keyboard, legend), Loc.T("Taste wählen", "Choose a key"), icon: Icons.Keyboard));
 
         _editor = new ContentControl { Content = Ui.Card(Ui.Text(Loc.T("Wähle oben eine Taste aus.", "Choose a key above."), sub: true)) };
@@ -107,10 +110,69 @@ public sealed class KeysPage(ControlCenter cc) : AppPage(cc)
         }
 
         Fill();
+        if (_pendingUndo is { } undo)
+        {
+            _pendingUndo = null;
+            Ui.ShowUndo(_list, undo.Message, undo.Undo, 0);
+        }
         return root;
     }
 
+    /// <summary>Deletes a mapping right away and offers to undo it for a few seconds.</summary>
+    private void Remove(KeyMapping map)
+    {
+        var index = R.Mappings.IndexOf(map);
+        if (index < 0) return;
+        R.Mappings.RemoveAt(index);
+        Cc.ApplyKeyRemap();
+        var name = TriggerName(map);
+        _pendingUndo = (Loc.T($"„{name}“ entfernt", $"“{name}” removed"), () =>
+        {
+            R.Mappings.Insert(Math.Min(index, R.Mappings.Count), map);
+            Cc.ApplyKeyRemap();
+            Reload();
+        });
+        Reload();
+    }
+
     private static void Reload() => (Owner as MainWindow)?.Navigate("keys");
+
+    /// <summary>
+    /// Keyboard layout of the picture: follows the system (QWERTZ, QWERTY, AZERTY …) unless chosen by hand,
+    /// for when the system is set to a different layout than the printed keys.
+    /// </summary>
+    private Control LayoutChooser()
+    {
+        var layout = KeyboardLayout.Current;
+        var system = KeyboardLayout.NameOf(layout.SystemId) ?? Loc.T("Systemeinstellung", "system setting");
+        var items = new List<(string Id, string Name)> { ("auto", Loc.T($"Automatisch ({system})", $"Automatic ({system})")) };
+        items.AddRange(KeyboardLayout.Choices);
+        var combo = new ComboBox { MinWidth = 240, VerticalAlignment = VerticalAlignment.Center, ItemsSource = items.Select(i => i.Name).ToList() };
+        var current = layout.IsManual ? layout.Id : "auto";
+        combo.SelectedIndex = Math.Max(0, items.FindIndex(i => i.Id == current));
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (combo.SelectedIndex < 0) return;
+            var id = items[combo.SelectedIndex].Id;
+            if (id == R.KeyboardLayout) return;
+            R.KeyboardLayout = id;
+            Changed();
+            Reload();
+        };
+        Avalonia.Automation.AutomationProperties.SetName(combo, Loc.T("Tastaturlayout", "Keyboard layout"));
+        ToolTip.SetTip(combo, Loc.T("Beschriftung und Form der Tastatur. „Automatisch“ folgt dem im System eingestellten Layout.",
+            "Legends and shape of the keyboard. “Automatic” follows the layout set in the system."));
+        var label = Ui.Text(Loc.T("Layout", "Layout"), 14, sub: true);
+        label.VerticalAlignment = VerticalAlignment.Center;
+        label.Margin = new Thickness(24, 0, 8, 0);
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(label);
+        row.Children.Add(combo);
+        return row;
+    }
+
+    /// <summary>Keys you normally cannot do without – disabling them gets a warning.</summary>
+    private static bool IsEssential(int vk) => vk is 0x1B or 0x0D or 0x08 or 0x20 or 0x09 or 0x5B or 0x5C;
 
     /// <summary>A mapping changed: apply it (Windows hook) and refresh the keyd export (Linux).</summary>
     private void Changed()
@@ -217,10 +279,10 @@ public sealed class KeysPage(ControlCenter cc) : AppPage(cc)
             Loc.T($"Erzeugt die Datei {KeydConfig.InstallPath} für den Dienst keyd.", $"Generates the file {KeydConfig.InstallPath} for the keyd daemon."), Icons.Code);
     }
 
-    private void ShowEditor(int vk)
+    private void ShowEditor(int vk, KeyMapping? existing = null)
     {
-        // Edit the first existing mapping of this key (any modifiers) or start a new one.
-        var existing = R.Mappings.FirstOrDefault(m => m.Key == vk);
+        // Edit the given mapping, else the first existing mapping of this key (any modifiers), else start a new one.
+        existing ??= R.Mappings.FirstOrDefault(m => m.Key == vk);
         var m = existing?.Clone() ?? new KeyMapping { Key = vk };
         var original = existing;
 
@@ -244,7 +306,7 @@ public sealed class KeysPage(ControlCenter cc) : AppPage(cc)
         // Action tiles
         s.Children.Add(Ui.Text(Loc.T("Was soll passieren?", "What should happen?"), 13, true, bottom: 6));
         var valueHost = new StackPanel();
-        var actions = new WrapPanel();
+        var actions = Ui.TileGrid(200);
         foreach (var a in Enum.GetValues<KeyActionType>())
         {
             var act = a;
@@ -284,9 +346,7 @@ public sealed class KeysPage(ControlCenter cc) : AppPage(cc)
         if (original is not null)
             buttons.Children.Add(Ui.Button(Loc.T("Belegung entfernen", "Remove mapping"), () =>
             {
-                R.Mappings.Remove(original);
-                Cc.ApplyKeyRemap();
-                Reload();
+                Remove(original);
             }, icon: Icons.Delete));
         s.Children.Add(new Border { Height = 8 });
         s.Children.Add(buttons);
@@ -373,17 +433,26 @@ public sealed class KeysPage(ControlCenter cc) : AppPage(cc)
                 return stack;
             }
             default:
-                return Ui.Text(Loc.T("Die Taste macht dann nichts mehr – praktisch für Feststelltaste oder Einfg.", "The key then does nothing – handy for Caps Lock or Insert."), 12, sub: true);
+            {
+                var hint = Ui.Text(Loc.T("Die Taste macht dann nichts mehr – praktisch für Feststelltaste oder Einfg.", "The key then does nothing – handy for Caps Lock or Insert."), 12, sub: true);
+                if (!IsEssential(m.Key)) return hint;
+                var warn = Ui.Text(OperatingSystem.IsWindows()
+                    ? Loc.T("Achtung: Diese Taste wird gebraucht. Notfalls ClevoControl über das Infobereich-Symbol beenden.", "Careful: this key is needed. If necessary, end ClevoControl from the tray icon to undo it.")
+                    : Loc.T("Achtung: Diese Taste wird gebraucht. Notfalls mit „sudo keyd reload“ nach dem Entfernen der Datei rückgängig machen.", "Careful: this key is needed. If necessary, remove the file and run “sudo keyd reload” to undo it."), 12.5);
+                Ui.SetRes(warn, TextBlock.ForegroundProperty, "SystemFillColorCautionBrush");
+                return Ui.Stack(hint, warn);
+            }
         }
     }
 
     /// <summary>
-    /// Windows virtual-key code of a pressed key (what the settings store). Letters, digits and named
-    /// keys come from the logical key; punctuation (layout dependent) from the physical position on a
-    /// German QWERTZ keyboard, matching the keyboard picture.
+    /// Virtual-key code of a pressed key (what the settings store). Character keys (letters, digits,
+    /// punctuation) come from the physical position through the real keyboard layout, matching the
+    /// keyboard picture; named keys from the logical key.
     /// </summary>
     private static int VirtualKeyOf(KeyEventArgs e)
     {
+        if (ScanOf(e.PhysicalKey) is { } scan && KeyboardLayout.Current.VkForScan(scan) is > 0 and var charVk) return charVk;
         var k = e.Key;
         if (k is >= AKey.A and <= AKey.Z) return 'A' + (k - AKey.A);
         if (k is >= AKey.D0 and <= AKey.D9) return '0' + (k - AKey.D0);
@@ -401,16 +470,25 @@ public sealed class KeysPage(ControlCenter cc) : AppPage(cc)
             AKey.LaunchApplication2 => 0xB7, AKey.LaunchMail => 0xB4, AKey.BrowserHome => 0xAC,
             _ => 0,
         };
-        if (vk != 0) return vk;
-        return e.PhysicalKey switch
-        {
-            // German OEM keys by physical position (same assignment as KeydConfig.KeyName)
-            PhysicalKey.BracketLeft => 0xBA, PhysicalKey.BracketRight => 0xBB, PhysicalKey.Comma => 0xBC, PhysicalKey.Slash => 0xBD,
-            PhysicalKey.Period => 0xBE, PhysicalKey.Backslash => 0xBF, PhysicalKey.Semicolon => 0xC0, PhysicalKey.Minus => 0xDB,
-            PhysicalKey.Backquote => 0xDC, PhysicalKey.Equal => 0xDD, PhysicalKey.Quote => 0xDE, PhysicalKey.IntlBackslash => 0xE2,
-            _ => 0,
-        };
+        return vk;
     }
+
+    /// <summary>PC scan code of a character key (Avalonia physical key → set-1 scan code).</summary>
+    private static int? ScanOf(PhysicalKey p) => p switch
+    {
+        PhysicalKey.Backquote => 0x29, PhysicalKey.Digit1 => 0x02, PhysicalKey.Digit2 => 0x03, PhysicalKey.Digit3 => 0x04,
+        PhysicalKey.Digit4 => 0x05, PhysicalKey.Digit5 => 0x06, PhysicalKey.Digit6 => 0x07, PhysicalKey.Digit7 => 0x08,
+        PhysicalKey.Digit8 => 0x09, PhysicalKey.Digit9 => 0x0A, PhysicalKey.Digit0 => 0x0B, PhysicalKey.Minus => 0x0C, PhysicalKey.Equal => 0x0D,
+        PhysicalKey.Q => 0x10, PhysicalKey.W => 0x11, PhysicalKey.E => 0x12, PhysicalKey.R => 0x13, PhysicalKey.T => 0x14,
+        PhysicalKey.Y => 0x15, PhysicalKey.U => 0x16, PhysicalKey.I => 0x17, PhysicalKey.O => 0x18, PhysicalKey.P => 0x19,
+        PhysicalKey.BracketLeft => 0x1A, PhysicalKey.BracketRight => 0x1B, PhysicalKey.Backslash => 0x2B,
+        PhysicalKey.A => 0x1E, PhysicalKey.S => 0x1F, PhysicalKey.D => 0x20, PhysicalKey.F => 0x21, PhysicalKey.G => 0x22,
+        PhysicalKey.H => 0x23, PhysicalKey.J => 0x24, PhysicalKey.K => 0x25, PhysicalKey.L => 0x26,
+        PhysicalKey.Semicolon => 0x27, PhysicalKey.Quote => 0x28, PhysicalKey.IntlBackslash => 0x56,
+        PhysicalKey.Z => 0x2C, PhysicalKey.X => 0x2D, PhysicalKey.C => 0x2E, PhysicalKey.V => 0x2F, PhysicalKey.B => 0x30,
+        PhysicalKey.N => 0x31, PhysicalKey.M => 0x32, PhysicalKey.Comma => 0x33, PhysicalKey.Period => 0x34, PhysicalKey.Slash => 0x35,
+        _ => null,
+    };
 
     private void Fill()
     {
@@ -427,11 +505,16 @@ public sealed class KeysPage(ControlCenter cc) : AppPage(cc)
             var desc = map.Action == KeyActionType.Disable ? ActionName(map.Action) : $"{ActionName(map.Action)}: {map.Value}";
             var controls = new StackPanel { Orientation = Orientation.Horizontal };
             controls.Children.Add(Ui.Toggle(map.Enabled, v => { map.Enabled = v; Changed(); _keyboard.SetMapped(R.Mappings.Where(x => x.Enabled).Select(x => x.Key)); }));
-            var edit = Ui.Button("", () => _keyboard.Select(map.Key), icon: Icons.Edit);
+            var edit = Ui.Button("", () =>
+            {
+                _keyboard.Select(map.Key);
+                ShowEditor(map.Key, map); // the exact mapping (e.g. Ctrl+F5, not F5)
+                _editor!.BringIntoView();
+            }, icon: Icons.Edit);
             edit.Margin = new Thickness(12, 0, 0, 0);
             ToolTip.SetTip(edit, Loc.T("Bearbeiten", "Edit"));
             controls.Children.Add(edit);
-            var del = Ui.Button("", () => { R.Mappings.Remove(map); Cc.ApplyKeyRemap(); Reload(); }, icon: Icons.Delete);
+            var del = Ui.Button("", () => Remove(map), icon: Icons.Delete);
             del.Margin = new Thickness(8, 0, 0, 0);
             ToolTip.SetTip(del, Loc.T("Löschen", "Delete"));
             controls.Children.Add(del);

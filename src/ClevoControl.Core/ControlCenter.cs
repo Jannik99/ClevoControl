@@ -7,6 +7,29 @@ using ClevoControl.Core.Settings;
 
 namespace ClevoControl.Core;
 
+/// <summary>Which feature changed the state last (see <see cref="ControlCenter.LastChange"/>).</summary>
+public enum ChangeSource
+{
+    None,
+    /// <summary>Changed by hand on a page or in the tray.</summary>
+    User,
+    /// <summary>A scene applied by the user.</summary>
+    Scene,
+    /// <summary>Automatic scene per app.</summary>
+    Automation,
+    /// <summary>AC/battery profile auto-switch.</summary>
+    PowerAutoSwitch,
+    /// <summary>Fans per profile loaded the fan settings of the new profile.</summary>
+    FanProfile,
+    /// <summary>Global hotkey.</summary>
+    Hotkey,
+    /// <summary>Local API / OpenRGB / game integration.</summary>
+    Integration,
+}
+
+/// <summary>Last state change: source, a localized one-line description and when it happened.</summary>
+public sealed record StateChange(ChangeSource Source, string Description, DateTime Time);
+
 /// <summary>Wires all services together. One instance per app.</summary>
 public sealed class ControlCenter : IDisposable
 {
@@ -27,6 +50,8 @@ public sealed class ControlCenter : IDisposable
         Hook = new KeyboardHook();
         Hook.KeyPressed += Lighting.NotifyKeyPress;
         Hook.BlockWindowsKey = Settings.General.WinKeyLock;
+        _layoutChoice = Settings.KeyRemap.KeyboardLayout;
+        Platform.KeyboardLayout.Use(_layoutChoice);
         KeyRemap = new KeyRemapService();
         KeyRemap.Apply(Settings.KeyRemap);
         Hook.Filter = KeyRemap.Filter;
@@ -45,11 +70,100 @@ public sealed class ControlCenter : IDisposable
             Power.SetProfile(Settings.Power.Profile, false);
         }
         Power.CheckPowerSource(Settings.Power, force: Settings.Power.AutoSwitch);
-        _powerTimer = new Timer(_ => { try { Power.CheckPowerSource(Settings.Power); } catch { } }, null, 5000, 5000);
+        _powerTimer = new Timer(_ => { try { CheckPowerSource(); } catch { } }, null, 5000, 5000);
+
+        German = Language.IsGerman(Settings.General.Language);
+        _hotkeysOn = Settings.General.SceneHotkeys;
+        store.SaveRequested += OnSaveRequested;
 
         ApplyIntegrations();
         UpdateLinuxKeyboard();
         AutoProfiles = new Automation.AutoProfileService(this);
+    }
+
+    // ------------------------------------------------------------------ status: active scene, last change source
+
+    /// <summary>Language of texts produced by Core (notifications, <see cref="StateChange.Description"/>), fixed at start like the apps' Loc.</summary>
+    public bool German { get; }
+
+    private string T(string de, string en) => German ? de : en;
+
+    /// <summary>Name of the scene that is in effect right now (set by applying a scene, cleared by manual changes), or null.</summary>
+    public string? ActiveScene { get; private set; }
+
+    /// <summary>Who changed the state last, with a description for the UI (null = nothing since start).</summary>
+    public StateChange? LastChange { get; private set; }
+
+    public ChangeSource LastChangeSource => LastChange?.Source ?? ChangeSource.None;
+
+    /// <summary>Raised (any thread) when <see cref="ActiveScene"/> or <see cref="LastChange"/> changed.</summary>
+    public event Action? StatusChanged;
+
+    /// <summary>Raised (any thread) when global hotkeys were switched on or off in the settings.</summary>
+    public event Action? HotkeysChanged;
+
+    /// <summary>Nesting depth of changes made by a feature (scene, hotkey, automation …) rather than by hand, per thread.</summary>
+    [ThreadStatic] private static int t_featureDepth;
+
+    private bool _hotkeysOn;
+
+    private void OnSaveRequested()
+    {
+        var on = Settings.General.SceneHotkeys;
+        if (on == _hotkeysOn) return;
+        _hotkeysOn = on;
+        UpdateLinuxKeyboard();
+        HotkeysChanged?.Invoke();
+    }
+
+    /// <summary>Records who changed the state. Pages may call this for changes made through other features.</summary>
+    public void ReportChange(ChangeSource source, string description)
+    {
+        LastChange = new StateChange(source, description, DateTime.Now);
+        StatusChanged?.Invoke();
+    }
+
+    /// <summary>Runs <paramref name="action"/> as a change made by a feature: manual-change tracking is suspended.</summary>
+    private void AsFeature(Action action)
+    {
+        t_featureDepth++;
+        try { action(); }
+        finally { t_featureDepth--; }
+    }
+
+    /// <summary>Lighting, profile or fans were changed: by hand unless a feature is running.</summary>
+    private void NoteManualChange()
+    {
+        if (t_featureDepth > 0) return;
+        if (ActiveScene is null && LastChange?.Source is null or ChangeSource.User) return;
+        ActiveScene = null;
+        LastChange = new StateChange(ChangeSource.User, T("Von Hand eingestellt", "Set by hand"), DateTime.Now);
+        StatusChanged?.Invoke();
+    }
+
+    internal static string ProfileText(PerformanceProfile p, bool de) => p switch
+    {
+        PerformanceProfile.Quiet => de ? "Leise" : "Quiet",
+        PerformanceProfile.PowerSaving => de ? "Stromsparen" : "Power saving",
+        PerformanceProfile.Performance => de ? "Maximale Leistung" : "Max performance",
+        _ => de ? "Ausgewogen" : "Balanced",
+    };
+
+    internal static string FanModeText(FanMode m, bool de) => m switch
+    {
+        FanMode.Max => "Maximum",
+        FanMode.Custom => de ? "Eigene Kurve" : "Custom curve",
+        _ => de ? "Automatisch" : "Automatic",
+    };
+
+    /// <summary>AC/battery check (timer and power events). Records the change when the auto-switch set a profile.</summary>
+    public void CheckPowerSource()
+    {
+        var before = Power.ActiveProfile;
+        Power.CheckPowerSource(Settings.Power);
+        if (Settings.Power.AutoSwitch && Power.ActiveProfile is { } p && p != before)
+            ReportChange(ChangeSource.PowerAutoSwitch, T($"Profil „{ProfileText(p, true)}“ vom Netzteil-Automatismus gesetzt ({(PowerService.IsOnAc ? "Netzteil" : "Akku")})",
+                $"Profile “{ProfileText(p, false)}” set by the AC/battery auto-switch ({(PowerService.IsOnAc ? "on AC" : "on battery")})"));
     }
 
     private Platform.LinuxKeyboard? _linuxKeyboard;
@@ -92,24 +206,35 @@ public sealed class ControlCenter : IDisposable
         string? msg = null;
         if (id == 20)
         {
-            ToggleFanBoost();
-            msg = "Fans: " + Settings.Fan.Mode;
+            AsFeature(ToggleFanBoost);
+            msg = T("Lüfter: ", "Fans: ") + FanModeText(Settings.Fan.Mode, German);
+            ReportChange(ChangeSource.Hotkey, T($"Lüfter per Tastenkürzel auf „{FanModeText(Settings.Fan.Mode, true)}“ gestellt",
+                $"Fans set to “{FanModeText(Settings.Fan.Mode, false)}” by hotkey"));
         }
         else if (id == 0)
         {
             Settings.Keyboard.Enabled = !Settings.Keyboard.Enabled;
-            ApplyKeyboard();
-            msg = "Keyboard light " + (Settings.Keyboard.Enabled ? "on" : "off");
+            AsFeature(ApplyKeyboard);
+            msg = Settings.Keyboard.Enabled ? T("Tastaturlicht an", "Keyboard light on") : T("Tastaturlicht aus", "Keyboard light off");
+            ReportChange(ChangeSource.Hotkey, msg + T(" (Tastenkürzel)", " (hotkey)"));
         }
         else if (id >= 1 && id <= Settings.Scenes.Count)
         {
             var scene = Settings.Scenes[id - 1];
-            ApplyScene(scene);
+            ApplyScene(scene, ChangeSource.Hotkey, T($"Szene „{scene.Name}“ per Tastenkürzel", $"Scene “{scene.Name}” by hotkey"));
             msg = $"{scene.Icon} {scene.Name}";
         }
         if (msg is not null) HotkeyHandled?.Invoke(msg);
         return msg;
     }
+
+    /// <summary>Text of a hotkey for notifications: "Strg+Alt+Umschalt+3" / "Ctrl+Alt+Shift+3".</summary>
+    public string HotkeyText(string key) => T("Strg+Alt+Umschalt+", "Ctrl+Alt+Shift+") + key;
+
+    /// <summary>Notification text when a hotkey could not be registered.</summary>
+    public string HotkeyTakenText(IReadOnlyList<string> keys) => keys.Count == 1
+        ? T($"{HotkeyText(keys[0])} ist bereits von einem anderen Programm belegt.", $"{HotkeyText(keys[0])} is already used by another program.")
+        : T($"{HotkeyText(string.Join(", ", keys))} sind bereits von anderen Programmen belegt.", $"{HotkeyText(string.Join(", ", keys))} are already used by other programs.");
 
     public Automation.AutoProfileService AutoProfiles { get; }
 
@@ -140,6 +265,7 @@ public sealed class ControlCenter : IDisposable
 
     public void ApplyKeyboard()
     {
+        NoteManualChange();
         Lighting.Apply(Settings.Keyboard);
         ApplyIntegrations();
         UpdateLinuxKeyboard();
@@ -148,12 +274,14 @@ public sealed class ControlCenter : IDisposable
 
     public void ApplyFans()
     {
+        NoteManualChange();
         Fans.Apply(Settings.Fan);
         Store.SaveSoon();
     }
 
     public void ApplyPower()
     {
+        NoteManualChange();
         Power.SetProfile(Settings.Power.Profile, Settings.Power.SyncWindowsPowerMode);
         Power.CheckPowerSource(Settings.Power, force: true);
         Store.SaveSoon();
@@ -166,8 +294,15 @@ public sealed class ControlCenter : IDisposable
         Store.SaveSoon();
     }
 
+    private string? _layoutChoice;
+
     public void ApplyKeyRemap()
     {
+        if (!string.Equals(Settings.KeyRemap.KeyboardLayout, _layoutChoice, StringComparison.Ordinal))
+        {
+            _layoutChoice = Settings.KeyRemap.KeyboardLayout;
+            Platform.KeyboardLayout.Use(_layoutChoice);
+        }
         KeyRemap.Apply(Settings.KeyRemap);
         Store.SaveSoon();
     }
@@ -239,6 +374,9 @@ public sealed class ControlCenter : IDisposable
         _fanProfileOwner = profile;
         Fans.Apply(f);
         Store.SaveSoon();
+        if (t_featureDepth == 0)
+            ReportChange(ChangeSource.FanProfile, T($"Lüfter vom Profil „{ProfileText(profile, true)}“ übernommen (Lüfter pro Profil)",
+                $"Fans loaded from profile “{ProfileText(profile, false)}” (fans per profile)"));
         FanSettingsSwapped?.Invoke();
     }
 
@@ -253,7 +391,24 @@ public sealed class ControlCenter : IDisposable
         Overheat?.Invoke($"{which} {hot} °C");
     }
 
-    public void ApplyScene(Scene scene)
+    /// <summary>Applies a scene chosen by the user (scene page, home, tray).</summary>
+    public void ApplyScene(Scene scene) =>
+        ApplyScene(scene, ChangeSource.Scene, T($"Szene „{scene.Name}“ angewendet", $"Scene “{scene.Name}” applied"));
+
+    /// <summary>Applies a scene and records <paramref name="source"/> / <paramref name="description"/> as the last change.</summary>
+    public void ApplyScene(Scene scene, ChangeSource source, string? description) =>
+        ApplySceneAs(scene, source, description, scene.Name);
+
+    /// <summary>Like <see cref="ApplyScene(Scene, ChangeSource, string?)"/>, but <paramref name="activeName"/> becomes <see cref="ActiveScene"/> (null for a captured "restore" state).</summary>
+    internal void ApplySceneAs(Scene scene, ChangeSource source, string? description, string? activeName)
+    {
+        AsFeature(() => ApplySceneValues(scene));
+        ActiveScene = activeName;
+        LastChange = new StateChange(source, description ?? scene.Name, DateTime.Now);
+        StatusChanged?.Invoke();
+    }
+
+    private void ApplySceneValues(Scene scene)
     {
         if (scene.Keyboard is not null)
         {
@@ -291,6 +446,86 @@ public sealed class ControlCenter : IDisposable
         Profile = Settings.Power.Profile,
         Volume = Sound.Volume,
     };
+
+    /// <summary>Captures only <paramref name="parts"/> of the current state.</summary>
+    public Scene CaptureScene(string name, string icon, SceneParts parts) =>
+        Scene.Compose(name, icon, parts, CaptureScene(name, icon));
+
+    // ------------------------------------------------------------------ scene list management (keeps automation references valid)
+
+    /// <summary>Undo information of <see cref="DeleteScene"/>.</summary>
+    public sealed record SceneRemoval(Scene Scene, int Index, AutoProfileSettings.RemovedReferences References, bool WasActive);
+
+    /// <summary>Where the scene is used by the automation (category mappings and own rules).</summary>
+    public List<AutoProfileSettings.SceneUsage> SceneUsages(Scene scene) => Settings.AutoProfiles.UsagesOf(scene.Name);
+
+    /// <summary>Adds a scene at the end of the list.</summary>
+    public void AddScene(Scene scene)
+    {
+        Settings.Scenes.Add(scene);
+        Store.SaveSoon();
+        StatusChanged?.Invoke();
+    }
+
+    /// <summary>Removes a scene and every automation reference to it. Pass the result to <see cref="RestoreScene"/> to undo.</summary>
+    public SceneRemoval DeleteScene(Scene scene)
+    {
+        var index = Settings.Scenes.IndexOf(scene);
+        if (index >= 0) Settings.Scenes.RemoveAt(index);
+        var refs = Settings.AutoProfiles.RemoveSceneReferences(scene.Name);
+        var wasActive = string.Equals(ActiveScene, scene.Name, StringComparison.OrdinalIgnoreCase);
+        if (wasActive) ActiveScene = null;
+        Store.SaveSoon();
+        StatusChanged?.Invoke();
+        return new SceneRemoval(scene, index, refs, wasActive);
+    }
+
+    /// <summary>Undo for <see cref="DeleteScene"/>.</summary>
+    public void RestoreScene(SceneRemoval removal)
+    {
+        var list = Settings.Scenes;
+        if (!list.Contains(removal.Scene)) list.Insert(Math.Clamp(removal.Index, 0, list.Count), removal.Scene);
+        Settings.AutoProfiles.RestoreSceneReferences(removal.References);
+        if (removal.WasActive && ActiveScene is null) ActiveScene = removal.Scene.Name;
+        Store.SaveSoon();
+        StatusChanged?.Invoke();
+    }
+
+    /// <summary>Replaces the scene at <paramref name="index"/> (edit dialog). A new name is carried over to the automation and the active scene.</summary>
+    public void ReplaceScene(int index, Scene updated)
+    {
+        var old = Settings.Scenes[index];
+        Settings.Scenes[index] = updated;
+        if (!string.Equals(old.Name, updated.Name, StringComparison.Ordinal))
+        {
+            Settings.AutoProfiles.RenameSceneReferences(old.Name, updated.Name);
+            if (string.Equals(ActiveScene, old.Name, StringComparison.OrdinalIgnoreCase)) ActiveScene = updated.Name;
+            AutoProfiles.OnSceneRenamed(old.Name, updated.Name);
+        }
+        Store.SaveSoon();
+        StatusChanged?.Invoke();
+    }
+
+    /// <summary>Moves a scene up (-1) or down (+1). Hotkey numbers follow the order.</summary>
+    public void MoveScene(int index, int delta)
+    {
+        var list = Settings.Scenes;
+        var target = index + delta;
+        if (index < 0 || index >= list.Count || target < 0 || target >= list.Count) return;
+        (list[index], list[target]) = (list[target], list[index]);
+        Store.SaveSoon();
+        StatusChanged?.Invoke();
+    }
+
+    /// <summary>Replaces all scenes by the defaults (in <paramref name="german"/> or English) and drops references to scenes that are gone.</summary>
+    public void RestoreDefaultScenes(bool german)
+    {
+        Settings.Scenes = Scene.Defaults(german);
+        Settings.AutoProfiles.PruneSceneReferences(Settings.Scenes.Select(s => s.Name));
+        if (ActiveScene is not null && !Settings.Scenes.Any(s => string.Equals(s.Name, ActiveScene, StringComparison.OrdinalIgnoreCase))) ActiveScene = null;
+        Store.SaveSoon();
+        StatusChanged?.Invoke();
+    }
 
     /// <summary>Starts/stops CS2 listener, OpenRGB server and local API according to the settings.</summary>
     public void ApplyIntegrations()
@@ -372,11 +607,13 @@ public sealed class ControlCenter : IDisposable
                     var name = r.GetProperty("name").GetString();
                     var scene = Settings.Scenes.FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
                     if (scene is null) return (404, "{\"error\":\"scene not found\"}");
-                    ApplyScene(scene);
+                    ApplyScene(scene, ChangeSource.Integration, T($"Szene „{scene.Name}“ über die lokale API", $"Scene “{scene.Name}” via the local API"));
                     return (200, "{\"ok\":true}");
                 case "/effect":
                     Settings.Keyboard.Effect = Enum.Parse<LightingEffectKind>(r.GetProperty("effect").GetString()!, true);
-                    ApplyKeyboard();
+                    AsFeature(ApplyKeyboard);
+                    ActiveScene = null;
+                    ReportChange(ChangeSource.Integration, T($"Effekt „{Settings.Keyboard.Effect}“ über die lokale API", $"Effect “{Settings.Keyboard.Effect}” via the local API"));
                     return (200, "{\"ok\":true}");
                 case "/clear":
                     Lighting.ClearOverride();
@@ -432,6 +669,7 @@ public sealed class ControlCenter : IDisposable
 
     public void Dispose()
     {
+        Store.SaveRequested -= OnSaveRequested;
         AutoProfiles.Dispose();
         _powerTimer.Dispose();
         Store.SaveNow();

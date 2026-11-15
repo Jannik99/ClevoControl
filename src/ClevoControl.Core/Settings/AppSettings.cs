@@ -228,6 +228,8 @@ public sealed class KeyRemapSettings
     public List<KeyMapping> Mappings { get; set; } = [];
     /// <summary>Show the number pad on the virtual keyboard (17" models).</summary>
     public bool ShowNumpad { get; set; }
+    /// <summary>Layout of the keyboard picture: "auto" (follow the system) or a layout id such as "de", "us", "fr".</summary>
+    public string KeyboardLayout { get; set; } = "auto";
 }
 
 /// <summary>Own rule: a process gets a category or directly a scene.</summary>
@@ -247,13 +249,112 @@ public sealed class AutoProfileSettings
     public bool RestoreOnLeave { get; set; } = true;
     /// <summary>Treat any exclusive-fullscreen app as a game.</summary>
     public bool DetectFullscreenGames { get; set; } = true;
-    public Dictionary<Automation.AppCategory, string> CategoryScenes { get; set; } = new()
-    {
-        [Automation.AppCategory.Game] = "Gaming",
-        [Automation.AppCategory.Video] = "Film",
-        [Automation.AppCategory.Music] = "Musik",
-    };
+    public Dictionary<Automation.AppCategory, string> CategoryScenes { get; set; } = DefaultCategoryScenes();
     public List<AppRule> CustomRules { get; set; } = [];
+
+    /// <summary>Default category → scene mapping, using the default scene names in the given language (null = system language).</summary>
+    public static Dictionary<Automation.AppCategory, string> DefaultCategoryScenes(bool? german = null)
+    {
+        var de = german ?? Language.IsGerman();
+        return new()
+        {
+            [Automation.AppCategory.Game] = "Gaming",
+            [Automation.AppCategory.Video] = de ? "Film" : "Movie",
+            [Automation.AppCategory.Music] = de ? "Musik" : "Music",
+        };
+    }
+
+    /// <summary>Where a scene is used: by a category mapping or by an own app rule.</summary>
+    public sealed record SceneUsage(Automation.AppCategory? Category, AppRule? Rule);
+
+    /// <summary>References removed by <see cref="RemoveSceneReferences"/>, for undo.</summary>
+    public sealed record RemovedReferences(string SceneName, IReadOnlyList<Automation.AppCategory> Categories, IReadOnlyList<AppRule> Rules)
+    {
+        public bool IsEmpty => Categories.Count == 0 && Rules.Count == 0;
+    }
+
+    private static bool Same(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Category mappings and own rules that refer to the scene <paramref name="sceneName"/>.</summary>
+    public List<SceneUsage> UsagesOf(string sceneName)
+    {
+        var list = new List<SceneUsage>();
+        foreach (var (cat, name) in CategoryScenes.OrderBy(x => x.Key))
+            if (Same(name, sceneName)) list.Add(new SceneUsage(cat, null));
+        foreach (var r in CustomRules)
+            if (Same(r.SceneName, sceneName)) list.Add(new SceneUsage(null, r));
+        return list;
+    }
+
+    /// <summary>Points every reference to <paramref name="oldName"/> at <paramref name="newName"/>. Returns the number changed.</summary>
+    public int RenameSceneReferences(string oldName, string newName)
+    {
+        var n = 0;
+        foreach (var cat in CategoryScenes.Where(x => Same(x.Value, oldName)).Select(x => x.Key).ToList())
+        {
+            CategoryScenes[cat] = newName;
+            n++;
+        }
+        foreach (var r in CustomRules.Where(r => Same(r.SceneName, oldName)))
+        {
+            r.SceneName = newName;
+            n++;
+        }
+        return n;
+    }
+
+    /// <summary>
+    /// Removes every reference to a deleted scene: the category does nothing any more, an own rule falls back
+    /// to its category's scene. Returns what was removed so it can be restored with <see cref="RestoreSceneReferences"/>.
+    /// </summary>
+    public RemovedReferences RemoveSceneReferences(string sceneName)
+    {
+        var cats = CategoryScenes.Where(x => Same(x.Value, sceneName)).Select(x => x.Key).ToList();
+        foreach (var c in cats) CategoryScenes.Remove(c);
+        var rules = CustomRules.Where(r => Same(r.SceneName, sceneName)).ToList();
+        foreach (var r in rules) r.SceneName = null;
+        return new RemovedReferences(sceneName, cats, rules);
+    }
+
+    /// <summary>Undo for <see cref="RemoveSceneReferences"/>.</summary>
+    public void RestoreSceneReferences(RemovedReferences removed)
+    {
+        foreach (var c in removed.Categories) CategoryScenes[c] = removed.SceneName;
+        foreach (var r in removed.Rules)
+            if (CustomRules.Contains(r)) r.SceneName = removed.SceneName;
+    }
+
+    /// <summary>Removes references to scenes that no longer exist (e.g. after restoring the default scenes). Returns the number removed.</summary>
+    public int PruneSceneReferences(IEnumerable<string> existing)
+    {
+        var names = new HashSet<string>(existing, StringComparer.OrdinalIgnoreCase);
+        var n = 0;
+        foreach (var cat in CategoryScenes.Where(x => !names.Contains(x.Value)).Select(x => x.Key).ToList())
+        {
+            CategoryScenes.Remove(cat);
+            n++;
+        }
+        foreach (var r in CustomRules.Where(r => r.SceneName is { Length: > 0 } s && !names.Contains(s)))
+        {
+            r.SceneName = null;
+            n++;
+        }
+        return n;
+    }
+}
+
+/// <summary>
+/// UI language without the apps' Loc class: "de", "en" or "auto" (follows the system UI language),
+/// the same rule the apps use.
+/// </summary>
+public static class Language
+{
+    public static bool IsGerman(string? setting = "auto") => setting switch
+    {
+        "de" => true,
+        "en" => false,
+        _ => System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "de",
+    };
 }
 
 public sealed class CoolingSettings
@@ -291,6 +392,11 @@ public sealed class GeneralSettings
     /// <summary>Block the Windows key (gaming mode).</summary>
     public bool WinKeyLock { get; set; }
 
+    /// <summary>The first-run setup card on the home page was dismissed.</summary>
+    public bool FirstRunDone { get; set; }
+    /// <summary>The "keeps running in the tray" notification was shown once.</summary>
+    public bool TrayHintShown { get; set; }
+
     /// <summary>Quick settings tiles shown on the home page (ids, in order).</summary>
     public List<string> QuickTiles { get; set; } = ["kblight", "profile", "fanmax", "throttle", "ambient", "winkey", "mute", "micmute"];
 }
@@ -305,14 +411,62 @@ public sealed class Scene
     public WindowsPowerMode? WindowsPowerMode { get; set; }
     public int? Volume { get; set; }
 
-    public static List<Scene> Defaults()
+    /// <summary>Which parts this scene sets.</summary>
+    [JsonIgnore]
+    public SceneParts Parts =>
+        (Keyboard is not null ? SceneParts.Lighting : 0) |
+        (Profile is not null ? SceneParts.Profile : 0) |
+        (FanMode is not null ? SceneParts.Fans : 0) |
+        (Volume is not null ? SceneParts.Volume : 0);
+
+    public Scene Clone() => new()
     {
+        Name = Name, Icon = Icon, Keyboard = Keyboard?.Clone(), FanMode = FanMode, Profile = Profile,
+        WindowsPowerMode = WindowsPowerMode, Volume = Volume,
+    };
+
+    /// <summary>
+    /// Builds a scene that contains only <paramref name="parts"/>. Values come from <paramref name="current"/>
+    /// (a full capture of the current state); when editing (<paramref name="previous"/> set) and
+    /// <paramref name="recapture"/> is false, parts the scene already had keep their stored values.
+    /// </summary>
+    public static Scene Compose(string name, string icon, SceneParts parts, Scene current, Scene? previous = null, bool recapture = true)
+    {
+        bool Keep(SceneParts p) => !recapture && previous is not null && previous.Parts.HasFlag(p);
+        var s = new Scene { Name = name, Icon = icon };
+        if (parts.HasFlag(SceneParts.Lighting))
+            s.Keyboard = (Keep(SceneParts.Lighting) ? previous!.Keyboard : current.Keyboard)?.Clone();
+        if (parts.HasFlag(SceneParts.Profile))
+        {
+            s.Profile = Keep(SceneParts.Profile) ? previous!.Profile : current.Profile;
+            // The OS power mode belongs to the profile part; a fresh capture follows the profile sync instead.
+            if (Keep(SceneParts.Profile)) s.WindowsPowerMode = previous!.WindowsPowerMode;
+        }
+        if (parts.HasFlag(SceneParts.Fans)) s.FanMode = Keep(SceneParts.Fans) ? previous!.FanMode : current.FanMode;
+        if (parts.HasFlag(SceneParts.Volume)) s.Volume = Keep(SceneParts.Volume) ? previous!.Volume : current.Volume;
+        return s;
+    }
+
+    /// <summary>Why <paramref name="name"/> cannot be used for a scene (null = fine). <paramref name="except"/> is the scene being edited.</summary>
+    public static SceneNameProblem? CheckName(IEnumerable<Scene> scenes, string? name, Scene? except = null)
+    {
+        var n = (name ?? "").Trim();
+        if (n.Length == 0) return SceneNameProblem.Empty;
+        if (scenes.Any(s => !ReferenceEquals(s, except) && string.Equals(s.Name.Trim(), n, StringComparison.OrdinalIgnoreCase)))
+            return SceneNameProblem.Duplicate;
+        return null;
+    }
+
+    /// <summary>The default scenes, named in German or English (null = system language).</summary>
+    public static List<Scene> Defaults(bool? german = null)
+    {
+        var de = german ?? Language.IsGerman();
         KeyboardSettings Kb(Action<KeyboardSettings> f) { var k = new KeyboardSettings(); f(k); return k; }
         return
         [
             new Scene
             {
-                Name = "Film", Icon = "🎬", Profile = PerformanceProfile.Quiet,
+                Name = de ? "Film" : "Movie", Icon = "🎬", Profile = PerformanceProfile.Quiet,
                 Keyboard = Kb(k => { k.Effect = LightingEffectKind.Ambient; k.Brightness = 60; }),
             },
             new Scene
@@ -322,27 +476,45 @@ public sealed class Scene
             },
             new Scene
             {
-                Name = "Musik", Icon = "🎵", Profile = PerformanceProfile.Entertainment,
+                Name = de ? "Musik" : "Music", Icon = "🎵", Profile = PerformanceProfile.Entertainment,
                 Keyboard = Kb(k => { k.Effect = LightingEffectKind.Music; k.Brightness = 100; }),
             },
             new Scene
             {
-                Name = "Arbeit", Icon = "💼", Profile = PerformanceProfile.Entertainment,
+                Name = de ? "Arbeit" : "Work", Icon = "💼", Profile = PerformanceProfile.Entertainment,
                 Keyboard = Kb(k => { k.Effect = LightingEffectKind.Static; k.Color = new RgbColor(255, 255, 255); k.Brightness = 70; }),
             },
             new Scene
             {
-                Name = "Nacht", Icon = "🌙", Profile = PerformanceProfile.Quiet,
+                Name = de ? "Nacht" : "Night", Icon = "🌙", Profile = PerformanceProfile.Quiet,
                 Keyboard = Kb(k => { k.Effect = LightingEffectKind.Static; k.Color = new RgbColor(255, 90, 20); k.Brightness = 20; }),
             },
             new Scene
             {
-                Name = "Akku sparen", Icon = "🔋", Profile = PerformanceProfile.PowerSaving,
+                Name = de ? "Akku sparen" : "Battery saver", Icon = "🔋", Profile = PerformanceProfile.PowerSaving,
                 WindowsPowerMode = Core.WindowsPowerMode.BestEfficiency,
                 Keyboard = Kb(k => { k.Effect = LightingEffectKind.Off; }),
             },
         ];
     }
+}
+
+/// <summary>Parts a scene can contain.</summary>
+[Flags]
+public enum SceneParts
+{
+    None = 0,
+    Lighting = 1,
+    Profile = 2,
+    Fans = 4,
+    Volume = 8,
+    All = Lighting | Profile | Fans | Volume,
+}
+
+public enum SceneNameProblem
+{
+    Empty,
+    Duplicate,
 }
 
 public sealed class AppSettings
@@ -407,9 +579,16 @@ public sealed class SettingsStore
         return new AppSettings();
     }
 
+    /// <summary>
+    /// Raised (on the caller's thread) whenever a page changed a setting and asked for a save. Lets services react to
+    /// settings that pages change directly (e.g. global hotkeys on/off) without a restart.
+    /// </summary>
+    public event Action? SaveRequested;
+
     /// <summary>Saves after a short delay so rapid slider changes do not hammer the disk.</summary>
     public void SaveSoon()
     {
+        try { SaveRequested?.Invoke(); } catch (Exception ex) { Log.Warn("SaveRequested handler: " + ex.Message); }
         lock (_sync)
         {
             _debounce?.Dispose();

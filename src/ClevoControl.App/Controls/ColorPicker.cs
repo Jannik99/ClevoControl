@@ -42,9 +42,17 @@ public sealed class ColorPicker : StackPanel
         _square.SizeChanged += (_, _) => UpdateVisuals();
         Children.Add(_square);
 
-        _hue = new Slider { Minimum = 0, Maximum = 359, Value = _h, Background = Ui.HueBrush(), Margin = new Thickness(0, 12, 0, 6), Style = (Style)Application.Current.FindResource("GradientSlider") };
+        _hue = new Slider { Minimum = 0, Maximum = 359, Value = _h, Background = Ui.HueBrush(), Style = (Style)Application.Current.FindResource("GradientSlider") };
         _hue.ValueChanged += (_, e) => { if (_updating) return; _h = e.NewValue; if (_s < 0.05) _s = 1; if (_v < 0.05) _v = 1; Emit(); };
-        Children.Add(_hue);
+        // Same 28 px label column as the R/G/B rows so all sliders start at the same x.
+        var hueRow = new DockPanel { Margin = new Thickness(0, 12, 0, 6) };
+        var hueLabel = Ui.Text("H", 12, true, sub: true);
+        hueLabel.Width = 28;
+        hueLabel.VerticalAlignment = VerticalAlignment.Center;
+        DockPanel.SetDock(hueLabel, Dock.Left);
+        hueRow.Children.Add(hueLabel);
+        hueRow.Children.Add(_hue);
+        Children.Add(hueRow);
 
         _r = Channel("R", Colors.Red);
         _g = Channel("G", Colors.Lime);
@@ -116,12 +124,16 @@ public sealed class ColorPicker : StackPanel
         ColorChanged?.Invoke(SelectedColor);
     }
 
+    /// <summary>Top/left of the 16 px marker: its centre stays 8 px inside the square, so the clip does not cut it.</summary>
+    private static double MarkerPos(double fraction, double size) =>
+        (size < 16 ? fraction * size : Math.Clamp(fraction * size, 8, size - 8)) - 8;
+
     private void UpdateVisuals(bool fromRgb = false)
     {
         _updating = true;
         _square.Background = new SolidColorBrush(RgbColor.FromHsv(_h, 1, 1).ToWpf());
-        Canvas.SetLeft(_marker, _s * _square.ActualWidth - 8);
-        Canvas.SetTop(_marker, (1 - _v) * _square.ActualHeight - 8);
+        Canvas.SetLeft(_marker, MarkerPos(_s, _square.ActualWidth));
+        Canvas.SetTop(_marker, MarkerPos(1 - _v, _square.ActualHeight));
         _marker.Fill = new SolidColorBrush(SelectedColor.ToWpf());
         _hue.Value = _h;
         var c = SelectedColor;

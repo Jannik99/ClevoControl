@@ -98,8 +98,14 @@ public sealed class KeyRemapService
         return d;
     }
 
+    /// <summary>
+    /// Name of a key as used in shortcut texts. Character keys use the legend of the user's real
+    /// layout (QWERTZ "Ü", AZERTY "A" on the US Q key, …), "+" is written as "Plus".
+    /// </summary>
     public static string KeyName(int vk)
     {
+        if (Platform.KeyboardLayout.Current.CharLabel(vk) is { Length: 1 } label && !char.IsWhiteSpace(label[0]))
+            return label == "+" ? "Plus" : label;
         foreach (var (name, code) in Names)
             if (code == vk && name.Length > 0 && !name.Equals("Strg", StringComparison.Ordinal) && !name.Equals("Umschalt", StringComparison.Ordinal))
                 return name;
@@ -123,6 +129,11 @@ public sealed class KeyRemapService
         var keys = new List<int>();
         foreach (var part in text.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
+            // Character keys follow the real layout: "Z" is the key labelled Z, wherever it sits.
+            var layout = Platform.KeyboardLayout.Current;
+            int? byLabel = part.Length == 1 ? layout.VkForLabel(part)
+                : part.Equals("Plus", StringComparison.OrdinalIgnoreCase) ? layout.VkForLabel("+") : null;
+            if (byLabel is { } v) { keys.Add(v); continue; }
             if (!Names.TryGetValue(part, out var vk)) return null;
             keys.Add(vk);
         }

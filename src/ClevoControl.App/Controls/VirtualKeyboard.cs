@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -6,45 +7,23 @@ using System.Windows.Media;
 namespace ClevoControl.App.Controls;
 
 /// <summary>
-/// Clickable German (QWERTZ, ISO) laptop keyboard. Mapped keys are highlighted, the selected key is
+/// Clickable laptop keyboard in the user's real layout (QWERTZ, QWERTY, AZERTY …, ISO or ANSI shape,
+/// see <see cref="Core.Platform.KeyboardLayout"/>). Mapped keys are highlighted, the selected key is
 /// outlined. Modifier keys are not selectable (they are used as modifiers of a mapping).
 /// </summary>
 public sealed class VirtualKeyboard : Viewbox
 {
     private const double Unit = 44, Gap = 4;
-    private readonly Dictionary<int, Border> _keys = [];
+    private readonly Dictionary<int, List<KeyView>> _keys = [];
     private readonly Canvas _canvas = new();
+    private readonly Core.Platform.KeyboardLayout _layout = Core.Platform.KeyboardLayout.Current;
     private HashSet<int> _mapped = [];
     private int? _selected;
 
+    /// <summary>A drawn key: its element, legend and how to paint it (Border or, for ISO Enter, an L-shaped Path).</summary>
+    private sealed record KeyView(FrameworkElement Root, TextBlock Text, Action<string, string, double> Paint);
+
     public event Action<int, string>? KeySelected;
-
-    // (label, virtual-key code or 0 = not selectable, width in units)
-    private static readonly (string Label, int Vk, double W)[][] MainRows =
-    [
-        [("Esc", 0x1B, 1), ("F1", 0x70, 1), ("F2", 0x71, 1), ("F3", 0x72, 1), ("F4", 0x73, 1), ("F5", 0x74, 1), ("F6", 0x75, 1), ("F7", 0x76, 1),
-         ("F8", 0x77, 1), ("F9", 0x78, 1), ("F10", 0x79, 1), ("F11", 0x7A, 1), ("F12", 0x7B, 1), ("Druck", 0x2C, 1), ("Einfg", 0x2D, 1), ("Entf", 0x2E, 1)],
-        [("^", 0xDC, 1), ("1", 0x31, 1), ("2", 0x32, 1), ("3", 0x33, 1), ("4", 0x34, 1), ("5", 0x35, 1), ("6", 0x36, 1), ("7", 0x37, 1), ("8", 0x38, 1),
-         ("9", 0x39, 1), ("0", 0x30, 1), ("ß", 0xDB, 1), ("´", 0xDD, 1), ("⌫", 0x08, 3)],
-        [("Tab", 0x09, 1.5), ("Q", 0x51, 1), ("W", 0x57, 1), ("E", 0x45, 1), ("R", 0x52, 1), ("T", 0x54, 1), ("Z", 0x5A, 1), ("U", 0x55, 1), ("I", 0x49, 1),
-         ("O", 0x4F, 1), ("P", 0x50, 1), ("Ü", 0xBA, 1), ("+", 0xBB, 1), ("↵", 0x0D, 2.5)],
-        [("⇩ Fest", 0x14, 1.85), ("A", 0x41, 1), ("S", 0x53, 1), ("D", 0x44, 1), ("F", 0x46, 1), ("G", 0x47, 1), ("H", 0x48, 1), ("J", 0x4A, 1), ("K", 0x4B, 1),
-         ("L", 0x4C, 1), ("Ö", 0xC0, 1), ("Ä", 0xDE, 1), ("#", 0xBF, 1), ("", 0, 2.15)],
-        [("⇧", 0, 1.35), ("<", 0xE2, 1), ("Y", 0x59, 1), ("X", 0x58, 1), ("C", 0x43, 1), ("V", 0x56, 1), ("B", 0x42, 1), ("N", 0x4E, 1), ("M", 0x4D, 1),
-         (",", 0xBC, 1), (".", 0xBE, 1), ("-", 0xBD, 1), ("⇧", 0, 2.65)],
-        [("Strg", 0, 1.35), ("Fn", 0, 1), ("⊞", 0, 1), ("Alt", 0, 1), ("", 0x20, 5.25), ("AltGr", 0, 1), ("☰", 0x5D, 1), ("Strg", 0, 1.4),
-         ("←", 0x25, 1), ("↑", 0x26, 1), ("↓", 0x28, 1), ("→", 0x27, 1)],
-    ];
-
-    private static readonly (string Label, int Vk, double W)[][] NumpadRows =
-    [
-        [("Pos1", 0x24, 1), ("Ende", 0x23, 1), ("Bild↑", 0x21, 1), ("Bild↓", 0x22, 1)],
-        [("Num", 0x90, 1), ("/", 0x6F, 1), ("*", 0x6A, 1), ("-", 0x6D, 1)],
-        [("7", 0x67, 1), ("8", 0x68, 1), ("9", 0x69, 1), ("+", 0x6B, 1)],
-        [("4", 0x64, 1), ("5", 0x65, 1), ("6", 0x66, 1), ("", 0, 1)],
-        [("1", 0x61, 1), ("2", 0x62, 1), ("3", 0x63, 1), ("", 0, 1)],
-        [("0", 0x60, 2), (",", 0x6E, 1), ("", 0, 1)],
-    ];
 
     public VirtualKeyboard(bool numpad)
     {
@@ -52,74 +31,116 @@ public sealed class VirtualKeyboard : Viewbox
         StretchDirection = StretchDirection.DownOnly;
         HorizontalAlignment = HorizontalAlignment.Left;
         Child = _canvas;
-        var width = Draw(MainRows, 0);
-        if (numpad) width = Draw(NumpadRows, width + Unit * 0.5);
+        var main = _layout.MainRows();
+        var width = Draw(main, 0);
+        if (numpad) width = Draw(_layout.NumpadRows(), width + Unit * 0.5);
         _canvas.Width = width;
-        _canvas.Height = MainRows.Length * (Unit + Gap);
+        _canvas.Height = main.Count * (Unit + Gap) - Gap;
+        AutomationProperties.SetName(this, Loc.T("Tastatur", "Keyboard") + " – " + _layout.DisplayName);
     }
 
-    /// <summary>Display name of a key on this layout (e.g. "Ü", "F5", "Leertaste").</summary>
-    public static string LabelFor(int vk)
-    {
-        if (vk == 0x20) return Loc.T("Leertaste", "Space");
-        if (vk == 0x0D) return "Enter";
-        if (vk == 0x08) return "Backspace";
-        if (vk == 0x14) return Loc.T("Feststelltaste", "Caps Lock");
-        if (vk == 0x5D) return Loc.T("Menütaste", "Menu key");
-        foreach (var row in MainRows.Concat(NumpadRows))
-            foreach (var k in row)
-                if (k.Vk == vk && k.Label.Length > 0)
-                    return vk is >= 0x60 and <= 0x6F ? "Num " + k.Label : k.Label;
-        return Core.Services.KeyRemapService.KeyName(vk);
-    }
+    /// <summary>Display name of a key on the user's layout (e.g. "Ü", "F5", "Entf").</summary>
+    public static string LabelFor(int vk) => Core.Platform.KeyboardLayout.Current.KeyLabel(vk);
 
-    private double Draw((string Label, int Vk, double W)[][] rows, double x0)
+    private static double Px(double w) => w * Unit + (w - 1) * Gap;
+
+    private double Draw(IReadOnlyList<IReadOnlyList<Core.Platform.KeyCap>> rows, double x0)
     {
         double maxX = 0;
-        for (var r = 0; r < rows.Length; r++)
+        for (var r = 0; r < rows.Count; r++)
         {
             var x = x0;
+            var y = r * (Unit + Gap);
             foreach (var (label, vk, w) in rows[r])
             {
-                var width = w * Unit + (w - 1) * Gap;
-                if (label.Length > 0 || vk != 0) _canvas.Children.Add(Key(label, vk, width, x, r * (Unit + Gap)));
+                var width = Px(w);
+                if (vk == 0x0D && label.Length == 0)
+                {
+                    // lower part of the ISO Enter key – drawn together with the upper part
+                }
+                else if (vk == 0x0D && r + 1 < rows.Count && rows[r + 1].FirstOrDefault(k => k.Vk == 0x0D && k.Label.Length == 0) is { Width: > 0 } lower)
+                {
+                    Add(vk, IsoEnter(label, width, Px(lower.Width), x, y));
+                }
+                else if (label.Length > 0 || vk != 0)
+                {
+                    Add(vk, Key(label, vk, width, x, y));
+                }
                 x += width + Gap;
             }
-            maxX = Math.Max(maxX, x);
+            maxX = Math.Max(maxX, x - Gap);
         }
         return maxX;
     }
 
-    private Border Key(string label, int vk, double width, double x, double y)
+    private void Add(int vk, KeyView view)
     {
-        var text = new TextBlock
-        {
-            Text = label, FontSize = label.Length > 3 ? 11 : 14, HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
-        };
-        var b = new Border
-        {
-            Width = width, Height = Unit, CornerRadius = new CornerRadius(6), BorderThickness = new Thickness(1), Child = text,
-        };
+        _canvas.Children.Add(view.Root);
+        if (vk == 0) return;
+        if (!_keys.TryGetValue(vk, out var list)) _keys[vk] = list = [];
+        list.Add(view);
+        var root = view.Root;
+        root.Cursor = Cursors.Hand;
+        root.ToolTip = LabelFor(vk);
+        root.Focusable = true;
+        AutomationProperties.SetName(root, LabelFor(vk));
+        root.MouseLeftButtonUp += (_, _) => Select(vk);
+        root.KeyDown += (_, e) => { if (e.Key is System.Windows.Input.Key.Enter or System.Windows.Input.Key.Space) { Select(vk); e.Handled = true; } };
+        root.MouseEnter += (_, _) => { if (_selected != vk && !_mapped.Contains(vk)) Paint(vk, "ControlFillColorSecondaryBrush", "ControlStrokeColorDefaultBrush", 1); };
+        root.MouseLeave += (_, _) => Restyle(vk);
+        root.GotKeyboardFocus += (_, _) => Restyle(vk);
+        root.LostKeyboardFocus += (_, _) => Restyle(vk);
+        Restyle(vk);
+    }
+
+    private static TextBlock Legend(string label) => new()
+    {
+        Text = label, FontSize = label.Length > 3 ? 11 : 14, HorizontalAlignment = HorizontalAlignment.Center,
+        VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
+    };
+
+    private static KeyView Key(string label, int vk, double width, double x, double y)
+    {
+        var text = Legend(label);
+        var b = new Border { Width = width, Height = Unit, CornerRadius = new CornerRadius(6), BorderThickness = new Thickness(1), Child = text };
         Canvas.SetLeft(b, x);
         Canvas.SetTop(b, y);
+        var view = new KeyView(b, text, (bg, stroke, thickness) =>
+        {
+            b.SetResourceReference(Border.BackgroundProperty, bg);
+            b.SetResourceReference(Border.BorderBrushProperty, stroke);
+            b.BorderThickness = new Thickness(thickness);
+        });
         if (vk == 0)
         {
-            // Modifier / Fn: shown for orientation only.
-            b.SetResourceReference(Border.BackgroundProperty, "SubtleFillColorSecondaryBrush");
-            b.SetResourceReference(Border.BorderBrushProperty, "ControlStrokeColorDefaultBrush");
-            text.SetResourceReference(TextBlock.ForegroundProperty, "TextFillColorDisabledBrush");
+            // Modifier / Fn: shown for orientation only (not selectable, but clearly readable).
+            view.Paint("ControlFillColorDefaultBrush", "ControlStrokeColorDefaultBrush", 1);
+            b.Background = Brushes.Transparent;
+            text.SetResourceReference(TextBlock.ForegroundProperty, "TextFillColorTertiaryBrush");
             b.ToolTip = Loc.T("Zusatztaste – wähle sie unten als „Nur zusammen mit“", "Modifier – choose it below under “Only together with”");
-            return b;
         }
-        b.Cursor = Cursors.Hand;
-        b.ToolTip = LabelFor(vk);
-        b.MouseLeftButtonUp += (_, _) => Select(vk);
-        b.MouseEnter += (_, _) => { if (_selected != vk && !_mapped.Contains(vk)) b.SetResourceReference(Border.BackgroundProperty, "ControlFillColorSecondaryBrush"); };
-        b.MouseLeave += (_, _) => Restyle(vk);
-        if (!_keys.ContainsKey(vk)) _keys[vk] = b;
-        Restyle(vk, b, text);
-        return b;
+        return view;
+    }
+
+    /// <summary>The tall ISO Enter key: upper part <paramref name="top"/> wide, lower part <paramref name="bottom"/> wide (right-aligned).</summary>
+    private static KeyView IsoEnter(string label, double top, double bottom, double x, double y)
+    {
+        var path = new System.Windows.Shapes.Path { Data = Geometry.Parse(Core.Platform.KeyboardLayout.IsoEnterPath(top, bottom, Unit, Gap, 6)), StrokeThickness = 1 };
+        var text = Legend(label);
+        text.Height = Unit;
+        text.VerticalAlignment = VerticalAlignment.Top;
+        text.Padding = new Thickness(0, 12, 0, 0);
+        var grid = new Grid { Width = top, Height = 2 * Unit + Gap };
+        grid.Children.Add(path);
+        grid.Children.Add(text);
+        Canvas.SetLeft(grid, x);
+        Canvas.SetTop(grid, y);
+        return new KeyView(grid, text, (bg, stroke, thickness) =>
+        {
+            path.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, bg);
+            path.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, stroke);
+            path.StrokeThickness = thickness;
+        });
     }
 
     public void Select(int vk)
@@ -137,15 +158,21 @@ public sealed class VirtualKeyboard : Viewbox
         foreach (var vk in _keys.Keys) Restyle(vk);
     }
 
-    private void Restyle(int vk) { if (_keys.TryGetValue(vk, out var b)) Restyle(vk, b, (TextBlock)b.Child); }
-
-    private void Restyle(int vk, Border b, TextBlock text)
+    private void Paint(int vk, string bg, string stroke, double thickness)
     {
+        if (!_keys.TryGetValue(vk, out var views)) return;
+        foreach (var v in views) v.Paint(bg, stroke, thickness);
+    }
+
+    private void Restyle(int vk)
+    {
+        if (!_keys.TryGetValue(vk, out var views)) return;
         var mapped = _mapped.Contains(vk);
+        var focused = views.Any(v => v.Root.IsKeyboardFocused);
         var selected = _selected == vk;
-        b.SetResourceReference(Border.BackgroundProperty, mapped ? "AccentFillColorDefaultBrush" : "ControlFillColorDefaultBrush");
-        text.SetResourceReference(TextBlock.ForegroundProperty, mapped ? "TextOnAccentFillColorPrimaryBrush" : "TextFillColorPrimaryBrush");
-        b.BorderThickness = new Thickness(selected ? 3 : 1);
-        b.SetResourceReference(Border.BorderBrushProperty, selected ? "TextFillColorPrimaryBrush" : "ControlStrokeColorDefaultBrush");
+        Paint(vk, mapped ? "AccentFillColorDefaultBrush" : "ControlFillColorDefaultBrush",
+            selected || focused ? "TextFillColorPrimaryBrush" : "ControlStrokeColorDefaultBrush", selected ? 3 : focused ? 2 : 1);
+        foreach (var v in views)
+            v.Text.SetResourceReference(TextBlock.ForegroundProperty, mapped ? "TextOnAccentFillColorPrimaryBrush" : "TextFillColorPrimaryBrush");
     }
 }

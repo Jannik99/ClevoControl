@@ -20,7 +20,7 @@
                 </Grid.ColumnDefinitions>
                 <Border x:Name="KeyboardDot" Width="52" Height="52" CornerRadius="26" BorderThickness="1"
                         BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" Background="#008CFF">
-                    <TextBlock Text="&#xE765;" FontFamily="{StaticResource IconFont}" FontSize="22" Foreground="White"
+                    <TextBlock x:Name="KeyboardIcon" Text="&#xE765;" FontFamily="{StaticResource IconFont}" FontSize="22" Foreground="White"
                                HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.9"/>
                 </Border>
                 <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">

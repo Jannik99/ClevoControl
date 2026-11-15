@@ -39,13 +39,20 @@ public sealed class AutomationPage(ControlCenter cc) : AppPage(cc)
             "ClevoControl erkennt, was du gerade machst, und wechselt die Szene von selbst – zum Beispiel „Gaming“ beim Zocken oder „Film“ bei Netflix. Verlässt du die App, kommt alles wieder zurück.",
             "ClevoControl recognises what you are doing and switches the scene by itself – e.g. “Gaming” while playing or “Film” on Netflix. When you leave the app, everything goes back.")));
 
-        root.Children.Add(Ui.SettingsCard(Icons.Sparkle, Loc.T("Szenen automatisch wechseln", "Switch scenes automatically"),
-            Loc.T("Prüft alle 1,5 Sekunden das Fenster im Vordergrund. Es werden keine Daten gespeichert oder gesendet.", "Checks the foreground window every 1.5 seconds. Nothing is stored or sent."),
-            Ui.Toggle(A.Enabled, v => { A.Enabled = v; Cc.Store.SaveSoon(); })));
-
-        // Live status
         var status = Ui.Text("", 13);
         var statusIcon = Ui.Icon(Icons.Circle, 20);
+        var combos = new List<ComboBox>();
+        root.Children.Add(Ui.SettingsCard(Icons.Sparkle, Loc.T("Szenen automatisch wechseln", "Switch scenes automatically"),
+            Loc.T("Prüft alle 1,5 Sekunden das Fenster im Vordergrund. Es werden keine Daten gespeichert oder gesendet.", "Checks the foreground window every 1.5 seconds. Nothing is stored or sent."),
+            Ui.Toggle(A.Enabled, v =>
+            {
+                A.Enabled = v;
+                Cc.Store.SaveSoon();
+                foreach (var c in combos) c.IsEnabled = v;
+                Refresh();
+            })));
+
+        // Live status
         var statusRow = new DockPanel();
         statusIcon.Margin = new Thickness(2, 0, 18, 0);
         DockPanel.SetDock(statusIcon, Dock.Left);
@@ -54,6 +61,12 @@ public sealed class AutomationPage(ControlCenter cc) : AppPage(cc)
         void Refresh()
         {
             var d = Cc.AutoProfiles.Current;
+            if (!A.Enabled)
+            {
+                statusIcon.Text = Icons.Info;
+                status.Text = Loc.T("Automatik ist aus – schalte sie oben ein.", "Automation is off – switch it on above.");
+                return;
+            }
             statusIcon.Text = CategoryIcon(d.Category);
             status.Text = d.Category == AppCategory.None
                 ? Loc.T("Im Moment wird nichts Bekanntes verwendet.", "Nothing known is in use right now.")
@@ -80,6 +93,8 @@ public sealed class AutomationPage(ControlCenter cc) : AppPage(cc)
                 else A.CategoryScenes[cat] = v;
                 Cc.Store.SaveSoon();
             }, 220);
+            combo.IsEnabled = A.Enabled;
+            combos.Add(combo);
             var count = AppCatalog.Apps.Count(a => a.Category == c);
             var desc = c switch
             {
@@ -111,48 +126,91 @@ public sealed class AutomationPage(ControlCenter cc) : AppPage(cc)
 
     public override void OnLeave() => _timer?.Stop();
 
-    private static void Reload() => ((MainWindow)Application.Current.MainWindow!).Navigate("automation");
+    private readonly StackPanel _rules = new();
+    private readonly StackPanel _rulesUndo = new();
+
+    private void FillRules()
+    {
+        _rules.Children.Clear();
+        foreach (var rule in A.CustomRules.ToList())
+        {
+            var r = rule;
+            var del = Ui.IconButton(Icons.Delete, Loc.T("Löschen", "Delete"), () =>
+            {
+                var index = A.CustomRules.IndexOf(r);
+                A.CustomRules.Remove(r);
+                Cc.Store.SaveSoon();
+                FillRules();
+                _rulesUndo.Children.Clear();
+                Ui.ShowUndo(_rulesUndo, Loc.T($"„{r.DisplayName ?? r.ProcessName}“ entfernt", $"“{r.DisplayName ?? r.ProcessName}” removed"), () =>
+                {
+                    A.CustomRules.Insert(Math.Clamp(index, 0, A.CustomRules.Count), r);
+                    Cc.Store.SaveSoon();
+                    FillRules();
+                });
+            });
+            del.Margin = new Thickness(0);
+            var what = r.SceneName is { Length: > 0 } scene ? Loc.T($"Szene „{scene}“", $"scene “{scene}”") : CategoryName(r.Category);
+            _rules.Children.Add(Ui.Row($"{r.DisplayName ?? r.ProcessName}  →  {what}", del, r.ProcessName + ".exe", 8));
+        }
+    }
+
+    /// <summary>Adds (or replaces) a rule for a process; returns the clean process name or null.</summary>
+    private string? AddRule(string? text, AppCategory cat)
+    {
+        var n = (text ?? "").Trim().Replace(".exe", "", StringComparison.OrdinalIgnoreCase);
+        if (n.Length == 0) return null;
+        A.CustomRules.RemoveAll(x => string.Equals(x.ProcessName, n, StringComparison.OrdinalIgnoreCase));
+        A.CustomRules.Add(new AppRule { ProcessName = n, Category = cat });
+        Cc.Store.SaveSoon();
+        FillRules();
+        return n;
+    }
 
     private Border OwnRules()
     {
         var s = new StackPanel();
-        foreach (var rule in A.CustomRules.ToList())
-        {
-            var r = rule;
-            var del = Ui.Button("", () => { A.CustomRules.Remove(r); Cc.Store.SaveSoon(); Reload(); }, icon: Icons.Delete);
-            del.ToolTip = Loc.T("Löschen", "Delete");
-            del.Margin = new Thickness(0);
-            var what = r.SceneName is { Length: > 0 } scene ? Loc.T($"Szene „{scene}“", $"scene “{scene}”") : CategoryName(r.Category);
-            s.Children.Add(Ui.Row($"{r.DisplayName ?? r.ProcessName}  →  {what}", del, r.ProcessName + ".exe", 8));
-        }
+        FillRules();
+        s.Children.Add(_rules);
+        s.Children.Add(_rulesUndo);
 
         // Add the current foreground app (or type a process name).
         var name = new TextBox { MinWidth = 200, ToolTip = Loc.T("Prozessname ohne .exe", "Process name without .exe") };
+        System.Windows.Automation.AutomationProperties.SetName(name, Loc.T("Prozessname", "Process name"));
         var cat = AppCategory.Game;
         var catCombo = Ui.Combo(new[] { AppCategory.Game, AppCategory.Video, AppCategory.Music, AppCategory.Meeting }.Select(c => (c, CategoryName(c))), cat, c => cat = c, 200);
         var pick = Ui.Button(Loc.T("Zuletzt benutzte App übernehmen", "Use last app"), () =>
         {
-            if (Cc.AutoProfiles.LastForeign is { } p) name.Text = p;
+            if (Cc.AutoProfiles.LastForeign is not { } p)
+            {
+                _rulesUndo.Children.Clear();
+                _rulesUndo.Children.Add(Ui.InfoBar(Loc.T("Noch keine andere App erkannt. Starte sie, wechsle hierher und versuche es noch einmal.",
+                    "No other app seen yet. Start it, switch back here and try again.")));
+                return;
+            }
+            _rulesUndo.Children.Clear();
+            if (AddRule(p, cat) is { } added)
+                Ui.ShowUndo(_rulesUndo, Loc.T($"„{added}“ → {CategoryName(cat)} hinzugefügt", $"“{added}” → {CategoryName(cat)} added"), () =>
+                {
+                    A.CustomRules.RemoveAll(x => string.Equals(x.ProcessName, added, StringComparison.OrdinalIgnoreCase));
+                    Cc.Store.SaveSoon();
+                    FillRules();
+                });
         }, icon: Icons.Refresh);
         var add = Ui.Button(Loc.T("Hinzufügen", "Add"), () =>
         {
-            var n = name.Text.Trim().Replace(".exe", "", StringComparison.OrdinalIgnoreCase);
-            if (n.Length == 0) return;
-            A.CustomRules.RemoveAll(x => string.Equals(x.ProcessName, n, StringComparison.OrdinalIgnoreCase));
-            A.CustomRules.Add(new AppRule { ProcessName = n, Category = cat });
-            Cc.Store.SaveSoon();
-            Reload();
+            if (AddRule(name.Text, cat) is not null) name.Text = "";
         }, accent: true, icon: Icons.Add);
         var row = new WrapPanel();
         name.Margin = new Thickness(0, 0, 8, 8);
         catCombo.Margin = new Thickness(0, 0, 8, 8);
-        row.Children.Add(name);
+        row.Children.Add(ScenesPage.WithPlaceholder(name, Loc.T("Prozessname, z. B. obs64", "Process name, e.g. obs64")));
         row.Children.Add(catCombo);
         row.Children.Add(add);
         row.Children.Add(pick);
         s.Children.Add(row);
-        s.Children.Add(Ui.Text(Loc.T("Tipp: Starte die App, wechsle hierher und klicke auf „Zuletzt benutzte App übernehmen“.",
-            "Tip: start the app, switch here and click “Use last app”."), 12, sub: true));
+        s.Children.Add(Ui.Text(Loc.T("Tipp: Starte die App, wechsle hierher, wähle die Kategorie und klicke auf „Zuletzt benutzte App übernehmen“.",
+            "Tip: start the app, switch here, choose the category and click “Use last app”."), 12, sub: true));
         return Ui.Card(s, Loc.T("Eigene Apps", "Your own apps"), Loc.T("Für Programme, die nicht erkannt werden.", "For programs that are not recognised."), Icons.Add);
     }
 

@@ -22,6 +22,7 @@ public sealed class MainWindow : Window
     private readonly ContentControl _host = new();
     private readonly ScrollViewer _scroll;
     private readonly Border _keyboardDot;
+    private readonly Material.Icons.Avalonia.MaterialIcon _keyboardIcon = new() { Kind = Icons.Kind(Icons.Keyboard)!.Value, Width = 22, Height = 22 };
     private AppPage? _current;
 
     public MainWindow(ControlCenter cc)
@@ -56,9 +57,9 @@ public sealed class MainWindow : Window
         _keyboardDot = new Border
         {
             Width = 52, Height = 52, CornerRadius = new CornerRadius(26), BorderThickness = new Thickness(1),
-            Background = cc.Settings.Keyboard.Color.ToBrush(),
-            Child = new Avalonia.Controls.Panel { Children = { Centered(Ui.Icon(Icons.Keyboard, 22, "TextOnAccentFillColorPrimaryBrush")) } },
+            Child = new Avalonia.Controls.Panel { Children = { Centered(_keyboardIcon) } },
         };
+        SetKeyboardDot(cc.Settings.Keyboard.Color);
         Ui.SetRes(_keyboardDot, Border.BorderBrushProperty, "ControlStrokeColorDefaultBrush");
         var hw = cc.Hardware;
         var header = new DockPanel { Margin = new Thickness(8, 12, 0, 22) };
@@ -113,9 +114,16 @@ public sealed class MainWindow : Window
         Content = root;
 
         cc.Lighting.ColorChanged += c => Dispatcher.UIThread.Post(() =>
-            _keyboardDot.Background = (cc.Lighting.KeyboardIsOn ? c : new RgbColor(40, 40, 40)).ToBrush());
+            SetKeyboardDot(cc.Lighting.KeyboardIsOn ? c : new RgbColor(40, 40, 40)));
         Activated += (_, _) => _current?.OnShow();
         Navigate("dashboard");
+    }
+
+    /// <summary>Keyboard color in the header; the icon is black or white, whichever is readable on it.</summary>
+    private void SetKeyboardDot(RgbColor c)
+    {
+        _keyboardDot.Background = c.ToBrush();
+        _keyboardIcon.Foreground = Ui.ContrastText(c);
     }
 
     private static Control Centered(Control c)
@@ -169,13 +177,24 @@ public sealed class MainWindow : Window
         _nav.Children.Add(rb);
     }
 
+    /// <summary>
+    /// Shows a page. Navigating to the page that is already shown rebuilds it (pages use this to refresh)
+    /// and keeps the scroll position; any other page starts at the top.
+    /// </summary>
     public void Navigate(string key)
     {
+        var same = _current?.Key == key;
+        var offset = _scroll.Offset;
         _current?.OnLeave();
         _current = _pages[key]();
         _current.Key = key;
         _host.Content = _current.Build();
         _scroll.Offset = new Vector(0, 0);
+        if (same && offset.Y > 0)
+        {
+            // The new content has no size yet: restore once it has been laid out.
+            Dispatcher.UIThread.Post(() => _scroll.Offset = new Vector(0, offset.Y), DispatcherPriority.Loaded);
+        }
         foreach (var rb in _nav.Children.OfType<RadioButton>())
             if ((string?)rb.Tag == key && rb.IsChecked != true) rb.IsChecked = true;
     }
@@ -196,8 +215,15 @@ public sealed class MainWindow : Window
         if (!App.IsExiting && _cc.Settings.General.CloseToTray)
         {
             e.Cancel = true;
+            if (!App.Current.TrayAvailable)
+            {
+                // No tray to come back from: hiding would leave the app unreachable. Minimise instead.
+                WindowState = WindowState.Minimized;
+                return;
+            }
             _current?.OnLeave();
             Hide();
+            App.Current.ShowTrayHint();
             return;
         }
         _current?.OnLeave();

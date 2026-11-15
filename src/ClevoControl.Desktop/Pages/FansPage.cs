@@ -46,7 +46,8 @@ public sealed class FansPage(ControlCenter cc) : AppPage(cc)
         root.Children.Add(Ui.Card(live));
 
         // Mode
-        var modes = new WrapPanel();
+        var modes = Ui.TileGrid(200, 8);
+        var modeTiles = new Dictionary<FanMode, RadioButton>();
         foreach (var m in Enum.GetValues<FanMode>())
         {
             var mode = m;
@@ -57,7 +58,9 @@ public sealed class FansPage(ControlCenter cc) : AppPage(cc)
                 _ => Loc.T("Deine Kurve unten", "Your curve below"),
             };
             var icon = m switch { FanMode.Auto => Icons.Auto, FanMode.Max => Icons.Max, _ => Icons.Edit };
-            modes.Children.Add(Ui.Tile(icon, ModeName(m), desc, F.Mode == m, "fanmode", () => { F.Mode = mode; Cc.ApplyFans(); }, 170));
+            var tile = Ui.Tile(icon, ModeName(m), desc, F.Mode == m, "fanmode", () => { F.Mode = mode; Cc.ApplyFans(); Cc.Store.SaveSoon(); }, 170);
+            modeTiles[m] = tile;
+            modes.Children.Add(tile);
         }
         var modeStack = Ui.Stack(modes,
             Ui.Switch(Loc.T("Eigene Lüftereinstellung pro Leistungsprofil", "Separate fan settings per performance profile"), F.PerProfile, v =>
@@ -69,7 +72,7 @@ public sealed class FansPage(ControlCenter cc) : AppPage(cc)
                      $"Mode and curves then only apply to the current profile ({PowerPage.ProfileName(Cc.Settings.Power.Profile)}). Switching the profile loads its fan settings.")),
             Ui.Text(Loc.T("Tastenkürzel „Lüfter voll“: Strg+Alt+Umschalt+F (wenn „Globale Tastenkürzel“ in den Einstellungen an ist).",
                 "Hotkey “fans full”: Ctrl+Alt+Shift+F (when “Global hotkeys” is on in Settings)."), 12, sub: true));
-        root.Children.Add(Ui.Card(modeStack, Loc.T("Modus", "Mode"), icon: Icons.Gauge));
+        root.Children.Add(Ui.Card(modeStack, Loc.T("Modus", "Mode"), icon: Icons.Gauge, indent: false));
         Cc.FanSettingsSwapped += OnSwapped;
 
         // Curves
@@ -84,23 +87,32 @@ public sealed class FansPage(ControlCenter cc) : AppPage(cc)
         curves.Children.Add(gpuCurve);
         curves.Children.Add(Ui.Switch(Loc.T("GPU-Lüfter reagiert auch auf CPU-Temperatur", "GPU fan also follows CPU temperature"), F.GpuFollowsCpu,
             v => { F.GpuFollowsCpu = v; Cc.ApplyFans(); }, Loc.T("Empfohlen – CPU und GPU teilen sich meist die Heatpipes.", "Recommended – CPU and GPU usually share heat pipes.")));
-        curves.Children.Add(Ui.SliderRow(Loc.T("Lüfter langsamer werden lassen um höchstens", "Slow fans down by at most"), 1, 20, F.RampDownPerSecond,
-            v => { F.RampDownPerSecond = (int)v; Cc.ApplyFans(); }, v => $"{v:0} %/s", 1));
-        curves.Children.Add(Ui.Wrap(
+        var ramp = Ui.SliderRow(Loc.T("Lüfter höchstens so schnell herunterregeln", "Max. fan slow-down speed"), 1, 20, F.RampDownPerSecond,
+            v => { F.RampDownPerSecond = (int)v; Cc.ApplyFans(); }, v => Loc.T($"{v:0} % pro Sekunde", $"{v:0} % per second"), 1);
+        if (ramp is StackPanel rampStack)
+            rampStack.Children.Insert(1, Ui.Text(Loc.T("Verhindert ständiges Auf und Ab", "Prevents constant up and down"), 12, sub: true));
+        curves.Children.Add(ramp);
+        WrapPanel presets = null!;
+        presets = Ui.Wrap(
             PresetLabel(),
             Ui.Button(Loc.T("Leise Kurve", "Quiet curve"), () => SetPreset([new(45, 0), new(60, 25), new(70, 40), new(80, 70), new(90, 100)])),
             Ui.Button(Loc.T("Ausgewogene Kurve", "Balanced curve"), () => SetPreset(FanSettings.DefaultCurve())),
-            Ui.Button(Loc.T("Kühle Kurve", "Cool curve"), () => SetPreset([new(35, 35), new(50, 50), new(60, 65), new(70, 80), new(80, 100)]))));
-        var safety = Ui.InfoBar(Loc.T("Sicherheitsnetz (rot hinterlegt): Ab 70 °C mindestens 35 %, ab 80 °C mindestens 70 %, ab 88 °C immer 100 %. Bei Fehlern, im Standby und beim Beenden übernimmt automatisch wieder das BIOS.",
-                "Safety net (red area): from 70 °C at least 35 %, from 80 °C at least 70 %, from 88 °C always 100 %. On errors, during sleep and on exit, the BIOS automatically takes over again."));
+            Ui.Button(Loc.T("Kühle Kurve", "Cool curve"), () => SetPreset([new(35, 35), new(50, 50), new(60, 65), new(70, 80), new(80, 100)])));
+        curves.Children.Add(presets);
+        var safety = Ui.InfoBar(Loc.T("Sicherheitsnetz (rot hinterlegt): Ab 70 °C mindestens 35 %, ab 80 °C mindestens 70 %, ab 88 °C immer 100 %. Bei Fehlern und im Standby übernimmt automatisch wieder das BIOS, beim Beenden ebenso – nur „Maximum“ bleibt auf Wunsch an (Einstellungen).",
+                "Safety net (red area): from 70 °C at least 35 %, from 80 °C at least 70 %, from 88 °C always 100 %. On errors and during sleep the BIOS automatically takes over again, on exit too – only “Maximum” can stay on if you choose so (Settings)."));
         curves.Children.Add(safety);
-        root.Children.Add(Ui.Card(curves, Loc.T("Eigene Lüfterkurve", "Custom fan curve"), Loc.T("Punkte mit der Maus ziehen. Sobald du die Kurve änderst, wird „Eigene Kurve“ aktiv.", "Drag the points. As soon as you change the curve, “Custom curve” becomes active."), Icons.Edit));
+        root.Children.Add(Ui.Card(curves, Loc.T("Eigene Lüfterkurve", "Custom fan curve"),
+            Loc.T("Punkte mit der Maus ziehen oder mit Tab/Pfeiltasten auswählen und verschieben (↑↓ Leistung, Strg+←→ Temperatur). Sobald du die Kurve änderst, wird „Eigene Kurve“ aktiv.",
+                "Drag the points, or select them with Tab/arrow keys and move them (↑↓ duty, Ctrl+←→ temperature). As soon as you change the curve, “Custom curve” becomes active."), Icons.Edit, indent: false));
 
         // Overheat warning
         var cooling = Cc.Settings.Cooling;
         var heat = Ui.Stack(
             Ui.Switch(Loc.T("Hitzewarnung anzeigen", "Show overheat warning"), cooling.OverheatWarning, v => { cooling.OverheatWarning = v; Cc.Store.SaveSoon(); },
-                Loc.T("Meldung im Infobereich, wenn CPU oder GPU zu heiß werden – höchstens alle 5 Minuten.", "Notification in the tray when CPU or GPU get too hot – at most every 5 minutes.")),
+                OperatingSystem.IsWindows()
+                    ? Loc.T("Meldung im Infobereich, wenn CPU oder GPU zu heiß werden – höchstens alle 5 Minuten.", "Notification in the tray when CPU or GPU get too hot – at most every 5 minutes.")
+                    : Loc.T("Meldung in der Systemleiste, wenn CPU oder GPU zu heiß werden – höchstens alle 5 Minuten.", "Notification in the panel when CPU or GPU get too hot – at most every 5 minutes.")),
             Ui.SliderRow(Loc.T("Warnen ab", "Warn from"), 75, 105, cooling.OverheatThreshold, v => { cooling.OverheatThreshold = (int)v; Cc.Store.SaveSoon(); }, v => $"{v:0} °C", 1));
         root.Children.Add(Ui.Card(heat, Loc.T("Hitzewarnung", "Overheat warning"), null, Icons.Warning));
 
@@ -123,6 +135,7 @@ public sealed class FansPage(ControlCenter cc) : AppPage(cc)
             }
             cpuCurve.CurrentTemperature = s.Cpu.TemperatureC;
             gpuCurve.CurrentTemperature = F.GpuFollowsCpu ? Math.Max(s.Gpu.TemperatureC, s.Cpu.TemperatureC) : s.Gpu.TemperatureC;
+            gpuCurve.MarkerPrefix = F.GpuFollowsCpu ? "max(CPU,GPU) " : null;
             if (Ui.Res(Ui.Accent) is ISolidColorBrush accent) cpuCurve.Accent = gpuCurve.Accent = accent.Color;
             cpuCurve.InvalidateVisual();
             gpuCurve.InvalidateVisual();
@@ -135,12 +148,26 @@ public sealed class FansPage(ControlCenter cc) : AppPage(cc)
 
         void SetPreset(List<FanCurvePoint> pts)
         {
-            F.CpuCurve.Clear(); F.CpuCurve.AddRange(pts.Select(p => new FanCurvePoint(p.Temperature, p.Duty)));
-            F.GpuCurve.Clear(); F.GpuCurve.AddRange(pts.Select(p => new FanCurvePoint(p.Temperature, p.Duty)));
+            // Keep a copy of both curves (and the mode) for undo.
+            var oldCpu = Copy(F.CpuCurve);
+            var oldGpu = Copy(F.GpuCurve);
+            var oldMode = F.Mode;
+            Replace(F.CpuCurve, pts);
+            Replace(F.GpuCurve, pts);
             Cc.ApplyFans();
-            if (SwitchToCustom()) return;
+            SwitchToCustom();
             cpuCurve.InvalidateVisual();
             gpuCurve.InvalidateVisual();
+            Ui.ShowUndo(curves, Loc.T("Kurve ersetzt", "Curve replaced"), () =>
+            {
+                Replace(F.CpuCurve, oldCpu);
+                Replace(F.GpuCurve, oldGpu);
+                Cc.ApplyFans();
+                if (oldMode != F.Mode && modeTiles.TryGetValue(oldMode, out var t)) t.IsChecked = true;
+                Cc.Store.SaveSoon();
+                cpuCurve.InvalidateVisual();
+                gpuCurve.InvalidateVisual();
+            }, curves.Children.IndexOf(presets) + 1);
         }
 
         void OnCurveEdited()
@@ -149,16 +176,27 @@ public sealed class FansPage(ControlCenter cc) : AppPage(cc)
             SwitchToCustom();
         }
 
-        bool SwitchToCustom()
+        // Selects the "Custom curve" tile in place (its action sets the mode and applies it).
+        void SwitchToCustom()
         {
-            if (F.Mode == FanMode.Custom) return false;
-            F.Mode = FanMode.Custom;
-            Cc.ApplyFans();
+            if (F.Mode == FanMode.Custom) return;
+            modeTiles[FanMode.Custom].IsChecked = true;
+            if (F.Mode != FanMode.Custom)
+            {
+                F.Mode = FanMode.Custom;
+                Cc.ApplyFans();
+            }
             Cc.Store.SaveSoon();
-            // Rebuild after the pointer event has finished (the editor is still handling it).
-            Dispatcher.UIThread.Post(() => (Owner as MainWindow)?.Navigate("fans"));
-            return true;
         }
+    }
+
+    private static List<FanCurvePoint> Copy(List<FanCurvePoint> pts) => pts.Select(p => new FanCurvePoint(p.Temperature, p.Duty)).ToList();
+
+    private static void Replace(List<FanCurvePoint> target, List<FanCurvePoint> pts)
+    {
+        var copy = Copy(pts);
+        target.Clear();
+        target.AddRange(copy);
     }
 
     private static TextBlock PresetLabel()

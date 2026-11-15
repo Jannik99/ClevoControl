@@ -85,12 +85,31 @@ public sealed class AutoProfileService : IDisposable
         return _cc.Settings.Scenes.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
     }
 
+    private static string CategoryText(AppCategory c, bool de) => c switch
+    {
+        AppCategory.Game => de ? "Spiel" : "game",
+        AppCategory.Video => de ? "Video" : "video",
+        AppCategory.Music => de ? "Musik" : "music",
+        AppCategory.Meeting => de ? "Anruf/Meeting" : "call/meeting",
+        _ => "",
+    };
+
+    private string? _activeBefore;
+
     private void Enter(Scene scene, Detection d)
     {
         Invoke(() =>
         {
-            if (_appliedScene is null && S.RestoreOnLeave) _restore = _cc.CaptureScene("restore", "");
-            _cc.ApplyScene(scene);
+            if (_appliedScene is null)
+            {
+                _activeBefore = _cc.ActiveScene;
+                if (S.RestoreOnLeave) _restore = _cc.CaptureScene("restore", "");
+            }
+            var de = _cc.German;
+            var app = d.AppName.Length > 0 ? d.AppName : d.ProcessName;
+            _cc.ApplyScene(scene, ChangeSource.Automation, de
+                ? $"Szene „{scene.Name}“ – automatisch, weil {CategoryText(d.Category, true)} „{app}“ erkannt"
+                : $"Scene “{scene.Name}” – automatically, because {CategoryText(d.Category, false)} “{app}” was detected");
             _appliedScene = scene.Name;
             Log.Info($"Auto profile: {d.AppName} ({d.Category}) -> scene \"{scene.Name}\"");
             Changed?.Invoke();
@@ -103,13 +122,22 @@ public sealed class AutoProfileService : IDisposable
         {
             if (_restore is not null)
             {
-                _cc.ApplyScene(_restore);
+                _cc.ApplySceneAs(_restore, ChangeSource.Automation,
+                    _cc.German ? "Vorheriger Zustand wiederhergestellt (Automatik)" : "Previous state restored (automation)", _activeBefore);
                 Log.Info("Auto profile: restored previous state");
             }
             _restore = null;
             _appliedScene = null;
+            _activeBefore = null;
             Changed?.Invoke();
         });
+    }
+
+    /// <summary>Keeps the automatic scene when it was renamed (otherwise the next tick would apply it again).</summary>
+    internal void OnSceneRenamed(string oldName, string newName)
+    {
+        if (string.Equals(_appliedScene, oldName, StringComparison.OrdinalIgnoreCase)) _appliedScene = newName;
+        if (string.Equals(_activeBefore, oldName, StringComparison.OrdinalIgnoreCase)) _activeBefore = newName;
     }
 
     public void Dispose() => _timer.Dispose();

@@ -74,9 +74,15 @@ public sealed class ColorPicker : StackPanel
             if (_v < 0.05) _v = 1;
             Emit();
         };
-        var hueHost = GradientSlider(_hue, Ui.HueBrush());
-        hueHost.Margin = new Thickness(0, 12, 0, 6);
-        Children.Add(hueHost);
+        // Same 28 px label column as the R/G/B rows so all sliders start at the same x.
+        var hueRow = new DockPanel { Margin = new Thickness(0, 12, 0, 6) };
+        var hueLabel = Ui.Text("H", 12, true, sub: true);
+        hueLabel.Width = 28;
+        hueLabel.VerticalAlignment = VerticalAlignment.Center;
+        DockPanel.SetDock(hueLabel, Dock.Left);
+        hueRow.Children.Add(hueLabel);
+        hueRow.Children.Add(GradientSlider(_hue, Ui.HueBrush()));
+        Children.Add(hueRow);
 
         _r = Channel("R", Colors.Red);
         _g = Channel("G", Colors.Lime);
@@ -168,12 +174,16 @@ public sealed class ColorPicker : StackPanel
         ColorChanged?.Invoke(SelectedColor);
     }
 
+    /// <summary>Top/left of the 16 px marker: its centre stays 8 px inside the square, so the clip does not cut it.</summary>
+    private static double MarkerPos(double fraction, double size) =>
+        (size < 16 ? fraction * size : Math.Clamp(fraction * size, 8, size - 8)) - 8;
+
     private void UpdateVisuals(bool fromRgb = false)
     {
         _updating = true;
         _square.Background = RgbColor.FromHsv(_h, 1, 1).ToBrush();
-        Canvas.SetLeft(_marker, _s * _square.Bounds.Width - 8);
-        Canvas.SetTop(_marker, (1 - _v) * _square.Bounds.Height - 8);
+        Canvas.SetLeft(_marker, MarkerPos(_s, _square.Bounds.Width));
+        Canvas.SetTop(_marker, MarkerPos(1 - _v, _square.Bounds.Height));
         _marker.Fill = SelectedColor.ToBrush();
         _hue.Value = _h;
         var c = SelectedColor;

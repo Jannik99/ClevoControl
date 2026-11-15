@@ -12,27 +12,46 @@
         <FluentTheme />
         <materialIcons:MaterialIconStyles />
 
+        <!--
+            Font like the WPF app (Segoe UI Variable on Windows 11), with the usual Linux UI fonts as fallback.
+            Every window and popup is a TopLevel, so this reaches dialogs, tooltips and drop-downs too.
+        -->
+        <Style Selector=":is(TopLevel)">
+            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI, Cantarell, Noto Sans, Ubuntu, Inter"/>
+        </Style>
+
+        <!-- Same height for buttons, text boxes and combo boxes in one row (32 px, like WinUI). -->
+        <Style Selector="Button">
+            <Setter Property="MinHeight" Value="32"/>
+            <Setter Property="Padding" Value="11,5,11,6"/>
+        </Style>
+
         <!-- Selectable card (like the "choose a mode" cards in Windows Settings) -->
         <Style Selector="RadioButton.tile">
             <Setter Property="Template">
                 <ControlTemplate>
-                    <Border Name="card" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                            CornerRadius="6" Padding="14,12" Margin="0,0,8,8">
+                    <Border Name="card" Background="{DynamicResource ControlFillColorDefaultBrush}"
+                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
+                            CornerRadius="6" Padding="12,10">
                         <ContentPresenter Content="{TemplateBinding Content}"
                                           VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
                     </Border>
                 </ControlTemplate>
             </Setter>
+            <!-- On the control (not inside the template), so a 150 px tile is 150 px wide. -->
+            <Setter Property="Margin" Value="0,0,8,8"/>
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
         <Style Selector="RadioButton.tile:pointerover /template/ Border#card">
-            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorSecondaryBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}"/>
+        </Style>
+        <Style Selector="RadioButton.tile:pressed /template/ Border#card">
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorTertiaryBrush}"/>
         </Style>
         <Style Selector="RadioButton.tile:checked /template/ Border#card">
             <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}"/>
             <Setter Property="BorderThickness" Value="2"/>
-            <Setter Property="Padding" Value="13,11"/>
+            <Setter Property="Padding" Value="11,9"/>
         </Style>
 
         <!-- Navigation entry -->
@@ -68,19 +87,15 @@
         <Style Selector="Slider.gradient:pointerover /template/ RepeatButton">
             <Setter Property="Background" Value="Transparent"/>
         </Style>
-
-        <Style Selector="Button.accent">
-            <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}"/>
-        </Style>
-        <Style Selector="Button.accent:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource AccentFillColorSecondaryBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}"/>
-        </Style>
     </Application.Styles>
 
     <Application.Resources>
         <ResourceDictionary>
+            <!--
+                The "Fluent control overrides" make accent buttons, toggles, sliders, check boxes, expanders,
+                combo boxes and text boxes use the same brushes as the rest of the app (light accent with black
+                text in dark mode, dark accent with white text in light mode), like the WPF app.
+            -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#E4000000"/>
@@ -89,12 +104,14 @@
                     <SolidColorBrush x:Key="TextFillColorDisabledBrush" Color="#5C000000"/>
                     <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FFFFFF"/>
                     <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="{DynamicResource SystemAccentColorDark1}"/>
-                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="{DynamicResource SystemAccentColor}"/>
+                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="{DynamicResource SystemAccentColorDark1}" Opacity="0.9"/>
+                    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="{DynamicResource SystemAccentColorDark1}" Opacity="0.8"/>
                     <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#B3FFFFFF"/>
                     <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#80F6F6F6"/>
                     <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#0F000000"/>
                     <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#B3FFFFFF"/>
                     <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#80F9F9F9"/>
+                    <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#4DF9F9F9"/>
                     <SolidColorBrush x:Key="ControlStrokeColorDefaultBrush" Color="#0F000000"/>
                     <SolidColorBrush x:Key="ControlStrongStrokeColorDefaultBrush" Color="#72000000"/>
                     <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#09000000"/>
@@ -105,7 +122,49 @@
                     <SolidColorBrush x:Key="SystemFillColorCautionBrush" Color="#9D5D00"/>
                     <SolidColorBrush x:Key="SystemFillColorSuccessBrush" Color="#0F7B0F"/>
                     <SolidColorBrush x:Key="SystemFillColorCautionBackgroundBrush" Color="#FFF4CE"/>
-                    <SolidColorBrush x:Key="SystemFillColorAttentionBackgroundBrush" Color="#80F6F6F6"/>
+                    <!-- WinUI's #80F6F6F6 is nearly the card color here; a light accent tint keeps info bars visible. -->
+                    <SolidColorBrush x:Key="SystemFillColorAttentionBackgroundBrush" Color="{DynamicResource SystemAccentColorLight3}" Opacity="0.3"/>
+
+                    <!-- Fluent control overrides -->
+                    <SolidColorBrush x:Key="AccentButtonBackground" Color="{DynamicResource SystemAccentColorDark1}"/>
+                    <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="{DynamicResource SystemAccentColorDark1}" Opacity="0.9"/>
+                    <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="{DynamicResource SystemAccentColorDark1}" Opacity="0.8"/>
+                    <SolidColorBrush x:Key="AccentButtonForeground" Color="#FFFFFF"/>
+                    <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="#FFFFFF"/>
+                    <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="#C5FFFFFF"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="{DynamicResource SystemAccentColorDark1}"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="{DynamicResource SystemAccentColorDark1}" Opacity="0.9"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="{DynamicResource SystemAccentColorDark1}" Opacity="0.8"/>
+                    <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="{DynamicResource SystemAccentColorDark1}"/>
+                    <SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="{DynamicResource SystemAccentColorDark1}" Opacity="0.9"/>
+                    <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="#FFFFFF"/>
+                    <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="#FFFFFF"/>
+                    <SolidColorBrush x:Key="SliderTrackValueFill" Color="{DynamicResource SystemAccentColorDark1}"/>
+                    <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="{DynamicResource SystemAccentColorDark1}" Opacity="0.9"/>
+                    <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="{DynamicResource SystemAccentColorDark1}" Opacity="0.8"/>
+                    <SolidColorBrush x:Key="SliderThumbBackground" Color="{DynamicResource SystemAccentColorDark1}"/>
+                    <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="{DynamicResource SystemAccentColorDark1}" Opacity="0.9"/>
+                    <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="{DynamicResource SystemAccentColorDark1}" Opacity="0.8"/>
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="{DynamicResource SystemAccentColorDark1}"/>
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="{DynamicResource SystemAccentColorDark1}" Opacity="0.9"/>
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="{DynamicResource SystemAccentColorDark1}" Opacity="0.8"/>
+                    <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#FFFFFF"/>
+                    <SolidColorBrush x:Key="ExpanderHeaderBackground" Color="#B3FFFFFF"/>
+                    <SolidColorBrush x:Key="ExpanderHeaderBackgroundPointerOver" Color="#80F9F9F9"/>
+                    <SolidColorBrush x:Key="ExpanderHeaderBackgroundPressed" Color="#4DF9F9F9"/>
+                    <SolidColorBrush x:Key="ExpanderHeaderBorderBrush" Color="#0F000000"/>
+                    <SolidColorBrush x:Key="ExpanderHeaderBorderBrushPointerOver" Color="#0F000000"/>
+                    <SolidColorBrush x:Key="ExpanderContentBorderBrush" Color="#0F000000"/>
+                    <SolidColorBrush x:Key="ExpanderContentBackground" Color="Transparent"/>
+                    <SolidColorBrush x:Key="ComboBoxBackground" Color="#B3FFFFFF"/>
+                    <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="#80F9F9F9"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#0F000000"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#0F000000"/>
+                    <SolidColorBrush x:Key="TextControlBackground" Color="#B3FFFFFF"/>
+                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#80F9F9F9"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="#0F000000"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#0F000000"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="{DynamicResource SystemAccentColorDark1}"/>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#FFFFFF"/>
@@ -114,12 +173,14 @@
                     <SolidColorBrush x:Key="TextFillColorDisabledBrush" Color="#5DFFFFFF"/>
                     <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#000000"/>
                     <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="{DynamicResource SystemAccentColorLight2}"/>
-                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="{DynamicResource SystemAccentColorLight1}"/>
+                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="{DynamicResource SystemAccentColorLight2}" Opacity="0.9"/>
+                    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="{DynamicResource SystemAccentColorLight2}" Opacity="0.8"/>
                     <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#0DFFFFFF"/>
                     <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#08FFFFFF"/>
                     <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#19000000"/>
                     <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#0FFFFFFF"/>
                     <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#15FFFFFF"/>
+                    <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#08FFFFFF"/>
                     <SolidColorBrush x:Key="ControlStrokeColorDefaultBrush" Color="#12FFFFFF"/>
                     <SolidColorBrush x:Key="ControlStrongStrokeColorDefaultBrush" Color="#8BFFFFFF"/>
                     <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#0FFFFFFF"/>
@@ -131,6 +192,47 @@
                     <SolidColorBrush x:Key="SystemFillColorSuccessBrush" Color="#6CCB5F"/>
                     <SolidColorBrush x:Key="SystemFillColorCautionBackgroundBrush" Color="#433519"/>
                     <SolidColorBrush x:Key="SystemFillColorAttentionBackgroundBrush" Color="#08FFFFFF"/>
+
+                    <!-- Fluent control overrides -->
+                    <SolidColorBrush x:Key="AccentButtonBackground" Color="{DynamicResource SystemAccentColorLight2}"/>
+                    <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="{DynamicResource SystemAccentColorLight2}" Opacity="0.9"/>
+                    <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="{DynamicResource SystemAccentColorLight2}" Opacity="0.8"/>
+                    <SolidColorBrush x:Key="AccentButtonForeground" Color="#000000"/>
+                    <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="#000000"/>
+                    <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="#80000000"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="{DynamicResource SystemAccentColorLight2}"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="{DynamicResource SystemAccentColorLight2}" Opacity="0.9"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="{DynamicResource SystemAccentColorLight2}" Opacity="0.8"/>
+                    <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="{DynamicResource SystemAccentColorLight2}"/>
+                    <SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="{DynamicResource SystemAccentColorLight2}" Opacity="0.9"/>
+                    <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="#000000"/>
+                    <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="#000000"/>
+                    <SolidColorBrush x:Key="SliderTrackValueFill" Color="{DynamicResource SystemAccentColorLight2}"/>
+                    <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="{DynamicResource SystemAccentColorLight2}" Opacity="0.9"/>
+                    <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="{DynamicResource SystemAccentColorLight2}" Opacity="0.8"/>
+                    <SolidColorBrush x:Key="SliderThumbBackground" Color="{DynamicResource SystemAccentColorLight2}"/>
+                    <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="{DynamicResource SystemAccentColorLight2}" Opacity="0.9"/>
+                    <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="{DynamicResource SystemAccentColorLight2}" Opacity="0.8"/>
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="{DynamicResource SystemAccentColorLight2}"/>
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="{DynamicResource SystemAccentColorLight2}" Opacity="0.9"/>
+                    <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="{DynamicResource SystemAccentColorLight2}" Opacity="0.8"/>
+                    <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#000000"/>
+                    <SolidColorBrush x:Key="ExpanderHeaderBackground" Color="#0FFFFFFF"/>
+                    <SolidColorBrush x:Key="ExpanderHeaderBackgroundPointerOver" Color="#15FFFFFF"/>
+                    <SolidColorBrush x:Key="ExpanderHeaderBackgroundPressed" Color="#08FFFFFF"/>
+                    <SolidColorBrush x:Key="ExpanderHeaderBorderBrush" Color="#19000000"/>
+                    <SolidColorBrush x:Key="ExpanderHeaderBorderBrushPointerOver" Color="#19000000"/>
+                    <SolidColorBrush x:Key="ExpanderContentBorderBrush" Color="#19000000"/>
+                    <SolidColorBrush x:Key="ExpanderContentBackground" Color="Transparent"/>
+                    <SolidColorBrush x:Key="ComboBoxBackground" Color="#0FFFFFFF"/>
+                    <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="#15FFFFFF"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#12FFFFFF"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#12FFFFFF"/>
+                    <SolidColorBrush x:Key="TextControlBackground" Color="#0FFFFFFF"/>
+                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#15FFFFFF"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="#12FFFFFF"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#12FFFFFF"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="{DynamicResource SystemAccentColorLight2}"/>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>

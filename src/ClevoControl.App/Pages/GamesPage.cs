@@ -37,11 +37,66 @@ public sealed class GamesPage(ControlCenter cc) : AppPage(cc)
 
     public override void OnLeave() => _timer?.Stop();
 
+    /// <summary>Effect that was active before a game effect was switched on ("Stop effect" returns to it). Survives page rebuilds.</summary>
+    private static LightingEffectKind? _previousEffect;
+
     private void Activate(LightingEffectKind effect)
     {
+        if (Kb.Effect != effect) _previousEffect = Kb.Effect;
         Kb.Effect = effect;
         Kb.Enabled = true;
         Cc.ApplyKeyboard();
+    }
+
+    /// <summary>
+    /// True once the user picked an area. The settings start with a placeholder rectangle (bottom left) that is
+    /// almost never the real bar, so it counts as "not selected" too.
+    /// </summary>
+    private static bool AreaChosen(ScreenRegionSettings r)
+    {
+        var d = new ScreenRegionSettings();
+        return r.Width > 0 && r.Height > 0 && !(r.X == d.X && r.Y == d.Y && r.Width == d.Width && r.Height == d.Height);
+    }
+
+    /// <summary>
+    /// "Activate effect" / "Stop effect" toggle (accent while active). Stopping returns to the previous effect.
+    /// <paramref name="ready"/> = false disables activating and shows <paramref name="notReadyTip"/>.
+    /// </summary>
+    private Button EffectToggle(LightingEffectKind effect, Func<bool>? ready = null, string? notReadyTip = null)
+    {
+        bool? shownActive = null;
+        Button? b = null;
+        bool IsActive() => Kb.Enabled && Kb.Effect == effect;
+        void Update()
+        {
+            var active = IsActive();
+            var canActivate = ready?.Invoke() ?? true;
+            b!.IsEnabled = active || canActivate;
+            b.ToolTip = active ? Loc.T("Zurück zu: ", "Back to: ") + LightingPage.EffectName(Previous())
+                : canActivate ? null : notReadyTip;
+            if (shownActive == active) return;
+            shownActive = active;
+            var text = active ? Loc.T("Effekt beenden", "Stop effect") : Loc.T("Effekt aktivieren", "Activate effect");
+            b.Content = text;
+            System.Windows.Automation.AutomationProperties.SetName(b, text);
+            if (active) b.Style = (Style)Application.Current.FindResource("AccentButtonStyle");
+            else b.ClearValue(FrameworkElement.StyleProperty);
+        }
+        LightingEffectKind Previous() => _previousEffect is { } p && p != effect ? p : LightingEffectKind.Static;
+        b = Ui.Button(Loc.T("Effekt aktivieren", "Activate effect"), () =>
+        {
+            if (IsActive())
+            {
+                Kb.Effect = Previous();
+                Cc.ApplyKeyboard();
+            }
+            else Activate(effect);
+            Update();
+        });
+        ToolTipService.SetShowOnDisabled(b, true);
+        Update();
+        _updaters.Add(Update);
+        return b;
     }
 
     private Border HealthDisplayCard()
@@ -63,6 +118,17 @@ public sealed class GamesPage(ControlCenter cc) : AppPage(cc)
         var status = Ui.Text("", 12.5, sub: true, bottom: 10);
         var fillBar = new ProgressBar { Height = 8, Maximum = 1, Margin = new Thickness(0, 0, 0, 14), Background = new SolidColorBrush(Color.FromRgb(50, 56, 71)), BorderThickness = new Thickness(0) };
         var barColor = new Border { Width = 22, Height = 22, CornerRadius = new CornerRadius(6), Background = r.BarColor.ToBrush(), Margin = new Thickness(8, 0, 0, 0) };
+        var notLearned = Ui.Text(Loc.T("Noch nicht gelernt", "Not learned yet"), 12.5, true, sub: true);
+        notLearned.Margin = new Thickness(8, 0, 0, 0);
+        notLearned.VerticalAlignment = VerticalAlignment.Center;
+        void UpdateBarColor()
+        {
+            var learned = AreaChosen(r);
+            barColor.Visibility = learned ? Visibility.Visible : Visibility.Collapsed;
+            notLearned.Visibility = learned ? Visibility.Collapsed : Visibility.Visible;
+            barColor.Background = r.BarColor.ToBrush();
+        }
+        UpdateBarColor();
         _updaters.Add(() =>
         {
             var active = Kb.Effect == LightingEffectKind.ScreenRegion;
@@ -96,7 +162,7 @@ public sealed class GamesPage(ControlCenter cc) : AppPage(cc)
                 r.X = rect.X; r.Y = rect.Y; r.Width = rect.Width; r.Height = rect.Height;
                 using var sampler = new RegionSampler();
                 if (sampler.DominantColor(mon, r) is { } c) r.BarColor = c;
-                barColor.Background = r.BarColor.ToBrush();
+                UpdateBarColor();
                 Activate(LightingEffectKind.ScreenRegion);
             }
             main.Show();
@@ -107,15 +173,28 @@ public sealed class GamesPage(ControlCenter cc) : AppPage(cc)
             var mons = ScreenSampler.GetMonitors();
             var mon = mons.ElementAtOrDefault(r.Monitor) ?? mons.First();
             using var sampler = new RegionSampler();
-            if (sampler.DominantColor(mon, r) is { } c) { r.BarColor = c; barColor.Background = c.ToBrush(); Cc.ApplyKeyboard(); }
+            if (sampler.DominantColor(mon, r) is { } c) { r.BarColor = c; UpdateBarColor(); Cc.ApplyKeyboard(); }
         });
-        var activate = Ui.Button(Loc.T("Effekt aktivieren", "Activate effect"), () => Activate(LightingEffectKind.ScreenRegion));
+        var needArea = Loc.T("Erst einen Bereich auswählen", "Select an area first");
+        ToolTipService.SetShowOnDisabled(learn, true);
+        void UpdateLearn()
+        {
+            learn.IsEnabled = AreaChosen(r);
+            learn.ToolTip = learn.IsEnabled ? null : needArea;
+        }
+        UpdateLearn();
+        _updaters.Add(UpdateLearn);
+        _updaters.Add(UpdateBarColor);
+        var activate = EffectToggle(LightingEffectKind.ScreenRegion, () => AreaChosen(r), needArea);
         var buttons = Ui.Wrap(select, learn, activate);
         s.Children.Add(buttons);
 
         var colorRow = new StackPanel { Orientation = Orientation.Horizontal };
-        colorRow.Children.Add(Ui.Text(Loc.T("Gelernte Leistenfarbe", "Learned bar color"), 12.5, sub: true));
+        var colorLabel = Ui.Text(Loc.T("Gelernte Leistenfarbe", "Learned bar color"), 12.5, sub: true);
+        colorLabel.VerticalAlignment = VerticalAlignment.Center;
+        colorRow.Children.Add(colorLabel);
         colorRow.Children.Add(barColor);
+        colorRow.Children.Add(notLearned);
         colorRow.Margin = new Thickness(0, 4, 0, 14);
         s.Children.Add(colorRow);
 
@@ -172,7 +251,7 @@ public sealed class GamesPage(ControlCenter cc) : AppPage(cc)
             }
             catch (Exception ex) { MessageBox.Show(ex.Message, "ClevoControl"); }
         }, accent: true);
-        s.Children.Add(Ui.Wrap(install, Ui.Button(Loc.T("Effekt aktivieren", "Activate effect"), () => Activate(LightingEffectKind.GameCs2))));
+        s.Children.Add(Ui.Wrap(install, EffectToggle(LightingEffectKind.GameCs2)));
         s.Children.Add(Ui.Text(Loc.T("Grün→Rot = Leben · Weiß = geblendet · Orange = brennt · Rotes Blinken = Bombe gelegt",
             "Green→red = health · white = flashed · orange = burning · red blinking = bomb planted"), 12, sub: true, bottom: 8));
         s.Children.Add(status);
@@ -201,19 +280,28 @@ public sealed class GamesPage(ControlCenter cc) : AppPage(cc)
         var s = new StackPanel();
         s.Children.Add(Ui.Switch(Loc.T("Lokale HTTP-Schnittstelle", "Local HTTP API"), G.LocalApiEnabled, on => { G.LocalApiEnabled = on; Cc.ApplyKeyboard(); },
             Loc.T("Nur von diesem PC erreichbar (127.0.0.1). Für eigene Skripte, Stream Deck, Home Assistant, Mods …", "Only reachable from this PC (127.0.0.1). For your own scripts, Stream Deck, Home Assistant, mods …")));
-        s.Children.Add(Ui.Row(Loc.T("Port", "Port"), PortBox(G.LocalApiPort, p => { G.LocalApiPort = p; Cc.ApplyKeyboard(); })));
+        static string Example(int port) =>
+            $"curl -X POST http://127.0.0.1:{port}/color -d \"{{\\\"color\\\":\\\"#ff0000\\\",\\\"seconds\\\":3}}\"\n" +
+            $"curl -X POST http://127.0.0.1:{port}/scene -d \"{{\\\"name\\\":\\\"Film\\\"}}\"\n" +
+            $"curl -X POST http://127.0.0.1:{port}/effect -d \"{{\\\"effect\\\":\\\"Spectrum\\\"}}\"\n" +
+            $"curl http://127.0.0.1:{port}/status";
         var example = new TextBox
         {
             IsReadOnly = true,
             FontFamily = new FontFamily("Consolas"),
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
-            Text = $"curl -X POST http://127.0.0.1:{G.LocalApiPort}/color -d \"{{\\\"color\\\":\\\"#ff0000\\\",\\\"seconds\\\":3}}\"\n" +
-                   $"curl -X POST http://127.0.0.1:{G.LocalApiPort}/scene -d \"{{\\\"name\\\":\\\"Film\\\"}}\"\n" +
-                   $"curl -X POST http://127.0.0.1:{G.LocalApiPort}/effect -d \"{{\\\"effect\\\":\\\"Spectrum\\\"}}\"\n" +
-                   $"curl http://127.0.0.1:{G.LocalApiPort}/status",
+            Text = Example(G.LocalApiPort),
+            Margin = new Thickness(0, 0, 0, 8),
         };
+        s.Children.Add(Ui.Row(Loc.T("Port", "Port"), PortBox(G.LocalApiPort, p => { G.LocalApiPort = p; Cc.ApplyKeyboard(); example.Text = Example(p); })));
         s.Children.Add(example);
+        var status = Ui.Text("", 12.5, sub: true);
+        _updaters.Add(() => status.Text = !G.LocalApiEnabled ? "" :
+            Cc.IntegrationError is { } e && e.StartsWith("API", StringComparison.Ordinal) ? e :
+            Loc.T($"Läuft auf 127.0.0.1:{G.LocalApiPort}", $"Running on 127.0.0.1:{G.LocalApiPort}"));
+        _updaters.Add(() => status.Visibility = status.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible);
+        s.Children.Add(status);
         return Ui.Card(s, Loc.T("Eigene Skripte & Mods", "Your own scripts & mods"), icon: Icons.Code);
     }
 
@@ -226,11 +314,13 @@ public sealed class GamesPage(ControlCenter cc) : AppPage(cc)
         err.MaxWidth = 220;
         err.HorizontalAlignment = HorizontalAlignment.Right;
         err.Margin = new Thickness(0, 4, 0, 0);
-        t.LostFocus += (_, _) =>
+        void Apply()
         {
             if (int.TryParse(t.Text, out var p) && p is > 1024 and < 65536)
             {
                 err.Visibility = Visibility.Collapsed;
+                t.ToolTip = null;
+                if (p == value) return;
                 value = p;
                 changed(p);
             }
@@ -240,6 +330,13 @@ public sealed class GamesPage(ControlCenter cc) : AppPage(cc)
                 t.ToolTip = err.Text;
                 t.Text = value.ToString();
             }
+        }
+        t.LostFocus += (_, _) => Apply();
+        t.KeyDown += (_, e) =>
+        {
+            if (e.Key != System.Windows.Input.Key.Enter) return;
+            e.Handled = true;
+            Apply();
         };
         return Ui.Stack(t, err);
     }

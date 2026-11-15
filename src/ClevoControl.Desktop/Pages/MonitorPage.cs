@@ -109,7 +109,8 @@ public sealed class MonitorPage(ControlCenter cc) : AppPage(cc)
         if (cpu.Available)
         {
             s.Children.Add(Ui.Text(Loc.T("Pro Kern (logische Prozessoren)", "Per core (logical processors)"), 13, true, bottom: 8));
-            var grid = new UniformGrid { Columns = cpu.LogicalCores > 12 ? 6 : 4 };
+            // Cells have a 6 px right/bottom gap; the negative right margin makes the last column end flush with the card.
+            var grid = new UniformGrid { Columns = cpu.LogicalCores > 12 ? 6 : 4, Margin = new Thickness(0, 0, -6, 0) };
             var count = _cpuHist.LastOrDefault()?.Cores.Count ?? cpu.Sample().Cores.Count;
             for (var i = 0; i < count; i++)
             {
@@ -119,7 +120,11 @@ public sealed class MonitorPage(ControlCenter cc) : AppPage(cc)
                 var val = Ui.Text("–", 11.5, true);
                 val.HorizontalAlignment = HorizontalAlignment.Right;
                 val.TextWrapping = TextWrapping.NoWrap;
-                var head = new Grid();
+                label.TextWrapping = TextWrapping.NoWrap;
+                label.TextTrimming = TextTrimming.CharacterEllipsis;
+                // Value gets its full width (Auto); the "#n" label takes what is left.
+                var head = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+                Grid.SetColumn(val, 1);
                 head.Children.Add(label);
                 head.Children.Add(val);
                 var cell = Ui.CardBorder(Ui.Stack(head, spark), new Thickness(0, 0, 6, 6), new Thickness(10, 6, 10, 6));
@@ -142,7 +147,7 @@ public sealed class MonitorPage(ControlCenter cc) : AppPage(cc)
                 ? Loc.T("Windows-Leistungsindikatoren sind nicht verfügbar.", "Windows performance counters are not available.")
                 : Loc.T("Die Prozessor-Auslastung des Systems (/proc/stat) ist nicht lesbar.", "The system's CPU load (/proc/stat) cannot be read."), true));
         }
-        return Ui.Card(s, Loc.T("Prozessor", "Processor"), icon: Icons.Chip);
+        return Ui.Card(s, Loc.T("Prozessor", "Processor"), icon: Icons.Chip, indent: false);
     }
 
     // ---------------------------------------------------------------- GPU
@@ -220,7 +225,7 @@ public sealed class MonitorPage(ControlCenter cc) : AppPage(cc)
             });
             s.Children.Add(engines);
         }
-        return Ui.Card(s, name, icon: Icons.Monitor);
+        return Ui.Card(s, name, icon: Icons.Monitor, indent: false);
     }
 
     private static string TopEngine(GpuAdapterSample s)
@@ -268,7 +273,7 @@ public sealed class MonitorPage(ControlCenter cc) : AppPage(cc)
             grid.Children.Add(BigGraph(Loc.T("CPU-Lüfter", "CPU fan"), "RPM", Blue, 0, 6000, () => hist().Select(h => (double)h.S.Cpu.Rpm).ToList(), margin: true));
             grid.Children.Add(BigGraph(Loc.T("GPU-Lüfter", "GPU fan"), "RPM", Blue, 0, 6000, () => hist().Select(h => (double)h.S.Gpu.Rpm).ToList(), margin: true));
         }
-        return Ui.Card(grid, Loc.T("Temperaturen & Lüfter", "Temperatures & fans"), icon: Icons.Thermometer);
+        return Ui.Card(grid, Loc.T("Temperaturen & Lüfter", "Temperatures & fans"), icon: Icons.Thermometer, indent: false);
     }
 
     private sealed record SensorSnapshotView(SensorSnapshot S);
@@ -276,12 +281,16 @@ public sealed class MonitorPage(ControlCenter cc) : AppPage(cc)
     private Control BigGraph(string title, string unit, Color color, double min, double max, Func<List<double>> values,
         string format = "0", bool margin = false, Func<string>? extra = null)
     {
+        // NoWrap: with Wrap and layout rounding the last digit could wrap away ("3,8   GHz").
         var value = Ui.Text("–", 24, true);
+        value.TextWrapping = TextWrapping.NoWrap;
         var unitText = Ui.Text(" " + unit, 13, sub: true);
         unitText.VerticalAlignment = VerticalAlignment.Bottom;
+        unitText.TextWrapping = TextWrapping.NoWrap;
         unitText.Margin = new Thickness(0, 0, 0, 4);
         var extraText = Ui.Text("", 12, sub: true);
         extraText.VerticalAlignment = VerticalAlignment.Bottom;
+        extraText.TextWrapping = TextWrapping.NoWrap;
         extraText.Margin = new Thickness(10, 0, 0, 4);
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         row.Children.Add(value);

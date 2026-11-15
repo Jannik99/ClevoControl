@@ -11,6 +11,7 @@ public partial class MainWindow : Window
     private readonly ControlCenter _cc;
     private readonly Dictionary<string, Func<AppPage>> _pages;
     private AppPage? _current;
+    private string? _currentKey;
 
     public MainWindow(ControlCenter cc)
     {
@@ -55,9 +56,16 @@ public partial class MainWindow : Window
             : Loc.T("Demo-Modus – kein Clevo-Treiber", "Demo mode – no Clevo driver");
 
         cc.Lighting.ColorChanged += c => Dispatcher.BeginInvoke(() =>
-            KeyboardDot.Background = (cc.Lighting.KeyboardIsOn ? c : new RgbColor(40, 40, 40)).ToBrush());
-        KeyboardDot.Background = cc.Settings.Keyboard.Color.ToBrush();
+            SetKeyboardDot(cc.Lighting.KeyboardIsOn ? c : new RgbColor(40, 40, 40)));
+        SetKeyboardDot(cc.Settings.Keyboard.Color);
         Navigate("dashboard");
+    }
+
+    /// <summary>Keyboard color in the header; the icon is black or white, whichever is readable on it.</summary>
+    private void SetKeyboardDot(RgbColor c)
+    {
+        KeyboardDot.Background = c.ToBrush();
+        KeyboardIcon.Foreground = Ui.ContrastText(c);
     }
 
     private static string? DeviceModel()
@@ -96,16 +104,27 @@ public partial class MainWindow : Window
         sp.Children.Add(ic);
         sp.Children.Add(Ui.Text(title, 14));
         var rb = new RadioButton { Style = (Style)FindResource("NavRadio"), Content = sp, GroupName = "nav", IsChecked = isChecked, Tag = key };
-        rb.Checked += (_, _) => Navigate(key);
+        // Navigate() checks the radio itself; only navigate when the user clicked a different page.
+        rb.Checked += (_, _) => { if (key != _currentKey) Navigate(key); };
         NavPanel.Children.Add(rb);
     }
 
+    /// <summary>
+    /// Shows a page. Navigating to the page that is already shown rebuilds it (pages use this to refresh)
+    /// and keeps the scroll position; any other page starts at the top.
+    /// </summary>
     public void Navigate(string key)
     {
+        var same = key == _currentKey;
+        var offset = ContentScroll.VerticalOffset;
         _current?.OnLeave();
         _current = _pages[key]();
+        _currentKey = key;
         PageHost.Content = _current.Build();
         ContentScroll.ScrollToTop();
+        if (same && offset > 0)
+            // The new content has no size yet: restore once it has been laid out.
+            Dispatcher.BeginInvoke(() => ContentScroll.ScrollToVerticalOffset(offset), System.Windows.Threading.DispatcherPriority.Loaded);
         foreach (var rb in NavPanel.Children.OfType<RadioButton>())
             if ((string)rb.Tag == key && rb.IsChecked != true) rb.IsChecked = true;
     }
@@ -117,6 +136,7 @@ public partial class MainWindow : Window
             e.Cancel = true;
             _current?.OnLeave();
             Hide();
+            (Application.Current as App)?.ShowTrayHint();
             return;
         }
         _current?.OnLeave();
