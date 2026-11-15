@@ -1,0 +1,7 @@
+* text=auto
+# Linux files must keep LF line endings, otherwise sh/udev/systemd fail on them.
+*.sh text eol=lf
+contrib/linux/* text eol=lf
+# Binary files (listed last so they win over the rules above)
+*.png binary
+*.ico binary

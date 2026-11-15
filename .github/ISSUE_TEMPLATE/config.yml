@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Linux setup guide
+    url: https://github.com/Jannik99/ClevoControl/blob/main/docs/LINUX.md
+    about: Driver installation, permissions and troubleshooting on Linux.
+  - name: Contributing guide
+    url: https://github.com/Jannik99/ClevoControl/blob/main/CONTRIBUTING.md
+    about: How to build, how the code is organised, safety rules for EC commands.

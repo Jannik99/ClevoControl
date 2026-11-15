@@ -48,7 +48,67 @@ public sealed class ControlCenter : IDisposable
         _powerTimer = new Timer(_ => { try { Power.CheckPowerSource(Settings.Power); } catch { } }, null, 5000, 5000);
 
         ApplyIntegrations();
+        UpdateLinuxKeyboard();
         AutoProfiles = new Automation.AutoProfileService(this);
+    }
+
+    private Platform.LinuxKeyboard? _linuxKeyboard;
+
+    /// <summary>Why key events are unavailable on Linux (permissions), or null.</summary>
+    public string? KeyboardInputError { get; private set; }
+
+    /// <summary>Raised after a hotkey did something, with a short message for a notification.</summary>
+    public event Action<string>? HotkeyHandled;
+
+    /// <summary>
+    /// Linux: reads /dev/input only while something needs it (reactive typing effect or scene hotkeys).
+    /// On Windows the app's own keyboard hook and RegisterHotKey do this.
+    /// </summary>
+    private void UpdateLinuxKeyboard()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        var needed = Settings.General.SceneHotkeys || Settings.Keyboard.Effect == LightingEffectKind.Reactive;
+        if (needed && _linuxKeyboard is null)
+        {
+            _linuxKeyboard = new Platform.LinuxKeyboard();
+            KeyboardInputError = _linuxKeyboard.Error;
+            _linuxKeyboard.KeyPressed += Lighting.NotifyKeyPress;
+            _linuxKeyboard.Hotkey += id => { if (Settings.General.SceneHotkeys) HandleHotkey(id); };
+        }
+        else if (!needed && _linuxKeyboard is not null)
+        {
+            _linuxKeyboard.Dispose();
+            _linuxKeyboard = null;
+            KeyboardInputError = null;
+        }
+    }
+
+    /// <summary>
+    /// Ctrl+Alt+Shift hotkeys: 0 = keyboard light on/off, 1–9 = scenes, 20 (F) = fans full on/off.
+    /// Returns the message to show, or null if the id does nothing.
+    /// </summary>
+    public string? HandleHotkey(int id)
+    {
+        string? msg = null;
+        if (id == 20)
+        {
+            ToggleFanBoost();
+            msg = "Fans: " + Settings.Fan.Mode;
+        }
+        else if (id == 0)
+        {
+            Settings.Keyboard.Enabled = !Settings.Keyboard.Enabled;
+            ApplyKeyboard();
+            msg = "Keyboard light " + (Settings.Keyboard.Enabled ? "on" : "off");
+        }
+        else if (id >= 1 && id <= Settings.Scenes.Count)
+        {
+            var scene = Settings.Scenes[id - 1];
+            ApplyScene(scene);
+            msg = $"{scene.Icon} {scene.Name}";
+        }
+        if (msg is not null) HotkeyHandled?.Invoke(msg);
+        return msg;
     }
 
     public Automation.AutoProfileService AutoProfiles { get; }
@@ -82,6 +142,7 @@ public sealed class ControlCenter : IDisposable
     {
         Lighting.Apply(Settings.Keyboard);
         ApplyIntegrations();
+        UpdateLinuxKeyboard();
         Store.SaveSoon();
     }
 
@@ -101,6 +162,7 @@ public sealed class ControlCenter : IDisposable
     public void ApplyGeneral()
     {
         Hook.BlockWindowsKey = Settings.General.WinKeyLock;
+        UpdateLinuxKeyboard();
         Store.SaveSoon();
     }
 
@@ -374,6 +436,7 @@ public sealed class ControlCenter : IDisposable
         _powerTimer.Dispose();
         Store.SaveNow();
         Hook.Dispose();
+        _linuxKeyboard?.Dispose();
         _openRgb?.Dispose();
         _api?.Dispose();
         Cs2.Dispose();

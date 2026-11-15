@@ -1,0 +1,16 @@
+# systemd *user* service – runs lighting effects, fan curve and profiles from
+# ~/.config/ClevoControl/settings.json. Installed by contrib/linux/install.sh.
+#   systemctl --user enable --now clevocontrol
+#   journalctl --user -u clevocontrol -f
+[Unit]
+Description=ClevoControl (keyboard lighting, fans, performance profiles)
+Documentation=https://github.com/Jannik99/ClevoControl/blob/main/docs/LINUX.md
+
+[Service]
+ExecStart=/usr/local/bin/clevoctl daemon
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

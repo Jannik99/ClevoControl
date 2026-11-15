@@ -1,0 +1,214 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Layout;
+using Avalonia.Threading;
+using ClevoControl.Core;
+using ClevoControl.Core.Automation;
+using ClevoControl.Core.Platform;
+using ClevoControl.Core.Settings;
+
+namespace ClevoControl.Desktop.Pages;
+
+/// <summary>Automatic scenes per app: games, videos/streaming, music and meetings.</summary>
+public sealed class AutomationPage(ControlCenter cc) : AppPage(cc)
+{
+    private AutoProfileSettings A => Cc.Settings.AutoProfiles;
+    private DispatcherTimer? _timer;
+
+    public static string CategoryName(AppCategory c) => c switch
+    {
+        AppCategory.Game => Loc.T("Spiele", "Games"),
+        AppCategory.Video => Loc.T("Filme, Serien & Videos", "Movies, series & videos"),
+        AppCategory.Music => Loc.T("Musik", "Music"),
+        AppCategory.Meeting => Loc.T("Anrufe & Meetings", "Calls & meetings"),
+        _ => Loc.T("Nichts erkannt", "Nothing detected"),
+    };
+
+    private static string CategoryIcon(AppCategory c) => c switch
+    {
+        AppCategory.Game => Icons.Game,
+        AppCategory.Video => Icons.Video,
+        AppCategory.Music => Icons.Music,
+        AppCategory.Meeting => Icons.Microphone,
+        _ => Icons.Circle,
+    };
+
+    /// <summary>Linux: how the current desktop lets ClevoControl see the app in use (null on Windows).</summary>
+    private static Border? DetectionInfo()
+    {
+        if (!OperatingSystem.IsLinux()) return null;
+        var kde = Shell.Desktop.Contains("KDE", StringComparison.OrdinalIgnoreCase);
+        if (!Shell.IsWayland && Shell.HasX11)
+            return Ui.InfoBar(Loc.T("X11: ClevoControl sieht das Fenster im Vordergrund und erkennt die App, die du gerade benutzt.",
+                "X11: ClevoControl sees the focused window and recognises the app you are using right now."));
+        if (kde && Shell.Has("kdotool"))
+            return Ui.InfoBar(Loc.T("KDE Plasma (Wayland): ClevoControl sieht das Fenster im Vordergrund über kdotool.",
+                "KDE Plasma (Wayland): ClevoControl sees the focused window via kdotool."));
+        var desktop = Shell.Desktop.Length > 0 ? Shell.Desktop : "Wayland";
+        return Ui.InfoBar(
+            Loc.T($"{desktop} (Wayland) verrät nicht, welches Fenster im Vordergrund ist. ClevoControl erkennt deshalb laufende Spiele und Apps statt des aktiven Fensters – Spiele haben Vorrang. Die Szene wechselt also, sobald die App läuft, und erst zurück, wenn sie beendet wird.",
+                $"{desktop} (Wayland) does not reveal which window is focused. ClevoControl therefore recognises running games and apps instead of the focused window – games take priority. The scene switches as soon as the app runs and only goes back when it is closed.")
+            + (kde ? Loc.T(" Tipp: Installiere „kdotool“, dann wird das Fenster im Vordergrund erkannt.", " Tip: install “kdotool” to detect the focused window.") : ""),
+            warning: true);
+    }
+
+    public override Control Build()
+    {
+        var root = new StackPanel();
+        root.Children.Add(Ui.PageTitle(Loc.T("Automatik", "Automation")));
+        root.Children.Add(Ui.PageSubtitle(Loc.T(
+            "ClevoControl erkennt, was du gerade machst, und wechselt die Szene von selbst – zum Beispiel „Gaming“ beim Zocken oder „Film“ bei Netflix. Verlässt du die App, kommt alles wieder zurück.",
+            "ClevoControl recognises what you are doing and switches the scene by itself – e.g. “Gaming” while playing or “Film” on Netflix. When you leave the app, everything goes back.")));
+
+        if (DetectionInfo() is { } info) root.Children.Add(info);
+
+        root.Children.Add(Ui.SettingsCard(Icons.Sparkle, Loc.T("Szenen automatisch wechseln", "Switch scenes automatically"),
+            Loc.T("Prüft alle 1,5 Sekunden das Fenster im Vordergrund. Es werden keine Daten gespeichert oder gesendet.", "Checks the foreground window every 1.5 seconds. Nothing is stored or sent."),
+            Ui.Toggle(A.Enabled, v => { A.Enabled = v; Cc.Store.SaveSoon(); })));
+
+        // Live status
+        var status = Ui.Text("", 13);
+        status.VerticalAlignment = VerticalAlignment.Center;
+        var iconHost = new ContentControl { Margin = new Thickness(2, 0, 18, 0), VerticalAlignment = VerticalAlignment.Center };
+        var statusRow = new DockPanel();
+        DockPanel.SetDock(iconHost, Dock.Left);
+        statusRow.Children.Add(iconHost);
+        statusRow.Children.Add(status);
+        string? shownIcon = null;
+        void Refresh()
+        {
+            var d = Cc.AutoProfiles.Current;
+            var glyph = CategoryIcon(d.Category);
+            if (glyph != shownIcon) { iconHost.Content = Ui.Icon(glyph, 20); shownIcon = glyph; }
+            status.Text = d.Category == AppCategory.None
+                ? Loc.T("Im Moment wird nichts Bekanntes verwendet.", "Nothing known is in use right now.")
+                : Loc.T($"Erkannt: {d.AppName} ({CategoryName(d.Category)})", $"Detected: {d.AppName} ({CategoryName(d.Category)})")
+                  + (Cc.AutoProfiles.ActiveScene is { } s ? Loc.T($" · Szene „{s}“ aktiv", $" · scene “{s}” active") : "");
+        }
+        Refresh();
+        _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _timer.Tick += (_, _) => Refresh();
+        _timer.Start();
+        root.Children.Add(Ui.CardBorder(statusRow, new Thickness(0, 0, 0, 8), new Thickness(16, 14, 16, 14)));
+
+        // Category → scene
+        var map = new StackPanel();
+        var sceneItems = new List<(string, string)> { ("", Loc.T("Nichts ändern", "Do nothing")) };
+        sceneItems.AddRange(Cc.Settings.Scenes.Select(s => (s.Name, s.Name)));
+        foreach (var c in new[] { AppCategory.Game, AppCategory.Video, AppCategory.Music, AppCategory.Meeting })
+        {
+            var cat = c;
+            A.CategoryScenes.TryGetValue(c, out var current);
+            var combo = Ui.Combo(sceneItems, current ?? "", v =>
+            {
+                if (string.IsNullOrEmpty(v)) A.CategoryScenes.Remove(cat);
+                else A.CategoryScenes[cat] = v;
+                Cc.Store.SaveSoon();
+            }, 220);
+            var count = AppCatalog.Apps.Count(a => a.Category == c);
+            var desc = c switch
+            {
+                AppCategory.Game => Loc.T($"{count} bekannte Spiele plus automatisch alle aus Steam, Epic, GOG, EA, Ubisoft, Battle.net, Riot und Xbox sowie Unreal-Engine- und Vollbild-Spiele",
+                    $"{count} known games plus automatically everything from Steam, Epic, GOG, EA, Ubisoft, Battle.net, Riot and Xbox, Unreal Engine and fullscreen games"),
+                AppCategory.Video => Loc.T($"{count} Player und Streamingdienste – auch im Browser (Netflix, YouTube, Disney+, Prime Video, Twitch …)",
+                    $"{count} players and streaming services – also in the browser (Netflix, YouTube, Disney+, Prime Video, Twitch …)"),
+                AppCategory.Music => Loc.T($"{count} Musik-Apps und -Dienste (Spotify, Apple Music, TIDAL, YouTube Music …)", $"{count} music apps and services (Spotify, Apple Music, TIDAL, YouTube Music …)"),
+                _ => Loc.T($"{count} Apps (Teams, Zoom, Discord, Meet …)", $"{count} apps (Teams, Zoom, Discord, Meet …)"),
+            };
+            map.Children.Add(Ui.SettingsCard(CategoryIcon(c), CategoryName(c), desc, combo));
+        }
+        root.Children.Add(Ui.Section(Loc.T("Welche Szene wann?", "Which scene when?")));
+        root.Children.Add(map);
+
+        // Options
+        root.Children.Add(new Border { Height = 12 });
+        root.Children.Add(Ui.SettingsCard(Icons.History, Loc.T("Danach zurückwechseln", "Switch back afterwards"),
+            Loc.T("Stellt den vorherigen Zustand wieder her, sobald du die App verlässt.", "Restores the previous state as soon as you leave the app."),
+            Ui.Toggle(A.RestoreOnLeave, v => { A.RestoreOnLeave = v; Cc.Store.SaveSoon(); })));
+        root.Children.Add(Ui.SettingsCard(Icons.Max, Loc.T("Vollbild-Programme als Spiel behandeln", "Treat fullscreen programs as games"),
+            Loc.T("Erkennt auch Spiele, die nicht im Katalog stehen.", "Also detects games that are not in the catalog."),
+            Ui.Toggle(A.DetectFullscreenGames, v => { A.DetectFullscreenGames = v; Cc.Store.SaveSoon(); })));
+
+        root.Children.Add(OwnRules());
+        root.Children.Add(Catalog());
+        return root;
+    }
+
+    public override void OnLeave() => _timer?.Stop();
+
+    private static void Reload() => (Owner as MainWindow)?.Navigate("automation");
+
+    private Border OwnRules()
+    {
+        var exe = OperatingSystem.IsWindows() ? ".exe" : "";
+        var s = new StackPanel();
+        foreach (var rule in A.CustomRules.ToList())
+        {
+            var r = rule;
+            var del = Ui.Button("", () => { A.CustomRules.Remove(r); Cc.Store.SaveSoon(); Reload(); }, icon: Icons.Delete);
+            ToolTip.SetTip(del, Loc.T("Löschen", "Delete"));
+            del.Margin = new Thickness(0);
+            var what = r.SceneName is { Length: > 0 } scene ? Loc.T($"Szene „{scene}“", $"scene “{scene}”") : CategoryName(r.Category);
+            s.Children.Add(Ui.Row($"{r.DisplayName ?? r.ProcessName}  →  {what}", del, r.ProcessName + exe, 8));
+        }
+
+        // Add the current foreground app (or type a process name).
+        var name = new TextBox { MinWidth = 200 };
+        ToolTip.SetTip(name, OperatingSystem.IsWindows() ? Loc.T("Prozessname ohne .exe", "Process name without .exe") : Loc.T("Prozessname", "Process name"));
+        var cat = AppCategory.Game;
+        var catCombo = Ui.Combo(new[] { AppCategory.Game, AppCategory.Video, AppCategory.Music, AppCategory.Meeting }.Select(c => (c, CategoryName(c))), cat, c => cat = c, 200);
+        var pick = Ui.Button(Loc.T("Zuletzt benutzte App übernehmen", "Use last app"), () =>
+        {
+            if (Cc.AutoProfiles.LastForeign is { } p) name.Text = p;
+        }, icon: Icons.Refresh);
+        var add = Ui.Button(Loc.T("Hinzufügen", "Add"), () =>
+        {
+            var n = (name.Text ?? "").Trim().Replace(".exe", "", StringComparison.OrdinalIgnoreCase);
+            if (n.Length == 0) return;
+            A.CustomRules.RemoveAll(x => string.Equals(x.ProcessName, n, StringComparison.OrdinalIgnoreCase));
+            A.CustomRules.Add(new AppRule { ProcessName = n, Category = cat });
+            Cc.Store.SaveSoon();
+            Reload();
+        }, accent: true, icon: Icons.Add);
+        var row = new WrapPanel();
+        name.Margin = new Thickness(0, 0, 8, 8);
+        catCombo.Margin = new Thickness(0, 0, 8, 8);
+        row.Children.Add(name);
+        row.Children.Add(catCombo);
+        row.Children.Add(add);
+        row.Children.Add(pick);
+        s.Children.Add(row);
+        s.Children.Add(Ui.Text(Loc.T("Tipp: Starte die App, wechsle hierher und klicke auf „Zuletzt benutzte App übernehmen“.",
+            "Tip: start the app, switch here and click “Use last app”."), 12, sub: true));
+        return Ui.Card(s, Loc.T("Eigene Apps", "Your own apps"), Loc.T("Für Programme, die nicht erkannt werden.", "For programs that are not recognised."), Icons.Add);
+    }
+
+    private Border Catalog()
+    {
+        var search = new TextBox { MinWidth = 260, Margin = new Thickness(0, 0, 0, 10), HorizontalAlignment = HorizontalAlignment.Left };
+        var list = new WrapPanel();
+        void Fill()
+        {
+            list.Children.Clear();
+            var q = (search.Text ?? "").Trim();
+            foreach (var app in AppCatalog.Apps.Where(a => q.Length == 0 || a.Name.Contains(q, StringComparison.OrdinalIgnoreCase)).OrderBy(a => a.Category).ThenBy(a => a.Name))
+            {
+                var chip = new Border { CornerRadius = new CornerRadius(4), Padding = new Thickness(8, 4, 10, 4), Margin = new Thickness(0, 0, 6, 6), BorderThickness = new Thickness(1) };
+                Ui.SetRes(chip, Border.BackgroundProperty, "ControlFillColorDefaultBrush");
+                Ui.SetRes(chip, Border.BorderBrushProperty, "ControlStrokeColorDefaultBrush");
+                var sp = new StackPanel { Orientation = Orientation.Horizontal };
+                var ic = Ui.Icon(CategoryIcon(app.Category), 12, Ui.TextSecondary);
+                ic.Margin = new Thickness(0, 0, 6, 0);
+                sp.Children.Add(ic);
+                sp.Children.Add(Ui.Text(app.Name, 12.5));
+                chip.Child = sp;
+                list.Children.Add(chip);
+            }
+        }
+        search.TextChanged += (_, _) => Fill();
+        Fill();
+        var label = Ui.Text(Loc.T("Suchen", "Search"), 12, sub: true, bottom: 4);
+        return Ui.Card(Ui.Stack(label, search, list), Loc.T($"Unterstützte Apps ({AppCatalog.Count})", $"Supported apps ({AppCatalog.Count})"),
+            Loc.T("Dazu kommen automatisch alle Spiele aus den bekannten Spiele-Bibliotheken.", "Plus all games from the known game libraries, automatically."), Icons.Star);
+    }
+}

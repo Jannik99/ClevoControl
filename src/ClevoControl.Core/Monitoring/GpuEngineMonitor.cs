@@ -35,6 +35,8 @@ public sealed partial class GpuEngineMonitor : IDisposable
 
     public GpuEngineMonitor()
     {
+        if (OperatingSystem.IsLinux()) { _adapters = []; _linux = true; return; }
+        if (!OperatingSystem.IsWindows()) { _adapters = []; return; }
         _adapters = Dxgi.Adapters();
         try
         {
@@ -48,7 +50,15 @@ public sealed partial class GpuEngineMonitor : IDisposable
         }
     }
 
-    public bool Available => _engines is not null;
+    private readonly bool _linux;
+
+    public bool Available => _linux || _engines is not null;
+
+    /// <summary>Linux: one entry per DRM card. Load is known for AMD (amdgpu); NVIDIA load comes from NVML.</summary>
+    private static List<GpuAdapterSample> SampleLinux() =>
+        Platform.LinuxHardwareInfo.Gpus().Select(g => new GpuAdapterSample(g.Card, g.Name, g.Vendor == "NVIDIA", g.BusyPercent ?? 0,
+            g.BusyPercent is { } b ? new Dictionary<string, double> { ["3D"] = b } : new Dictionary<string, double>(),
+            g.VramUsedMb ?? 0, g.VramTotalMb ?? 0, 0)).ToList();
 
     private Dictionary<string, CounterSample> ReadUtilization()
     {
@@ -62,6 +72,7 @@ public sealed partial class GpuEngineMonitor : IDisposable
 
     public List<GpuAdapterSample> Sample()
     {
+        if (_linux) return SampleLinux();
         var list = new List<GpuAdapterSample>();
         if (_engines is null) return list;
 

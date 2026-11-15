@@ -28,6 +28,12 @@ public static class BatteryService
 {
     public static BatteryInfo Read()
     {
+        if (OperatingSystem.IsLinux()) return Platform.LinuxSys.ReadBattery();
+        return ReadWindows();
+    }
+
+    private static BatteryInfo ReadWindows()
+    {
         Win32.GetSystemPowerStatus(out var ps);
         var present = ps.BatteryFlag != 128 && ps.BatteryFlag != 255;
         var percent = ps.BatteryLifePercent <= 100 ? ps.BatteryLifePercent : 0;

@@ -368,7 +368,9 @@ public sealed class SettingsStore
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
+    /// <summary>~/.config/ClevoControl or %APPDATA%ClevoControl; CLEVOCONTROL_CONFIG_DIR overrides it (tests, screenshots, portable use).</summary>
     public static string DefaultDirectory =>
+        Environment.GetEnvironmentVariable("CLEVOCONTROL_CONFIG_DIR") is { Length: > 0 } custom ? custom :
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ClevoControl");
 
     private readonly string _path;

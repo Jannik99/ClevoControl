@@ -41,7 +41,7 @@ public sealed class AutoProfileService : IDisposable
     {
         try
         {
-            var fg = AppDetector.Foreground();
+            var fg = AppDetector.Foreground(S);
             if (fg is not null && !fg.ProcessName.Equals("ClevoControl", StringComparison.OrdinalIgnoreCase) && !fg.ProcessName.Equals("explorer", StringComparison.OrdinalIgnoreCase))
                 LastForeign = fg.ProcessName;
             var detection = fg is null ? Detection.Nothing : AppDetector.Classify(fg, S);

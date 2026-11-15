@@ -1,0 +1,74 @@
+name: Model report
+description: Tell us whether ClevoControl works on your laptop (also partial results!)
+title: "[Model] "
+labels: ["model report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! Every report helps other owners of the same laptop. Partial results ("colors work, fans don't") are just as useful.
+        Reports end up in the [supported models list](https://github.com/Jannik99/ClevoControl#supported-models).
+  - type: input
+    id: model
+    attributes:
+      label: Laptop model
+      description: Brand and model name as sold, plus the Clevo board name if you know it (shown by `clevoctl sysinfo` as "Mainboard").
+      placeholder: "e.g. XMG NEO 15 (Clevo PD50PNT)"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ClevoControl version
+      placeholder: "0.5.0"
+    validations:
+      required: true
+  - type: checkboxes
+    id: works
+    attributes:
+      label: What works?
+      description: Tick what you tested and what worked. Leave unticked what failed or you did not test, and explain below.
+      options:
+        - label: Hardware detected (not "simulation" / "demo mode")
+        - label: Keyboard color
+        - label: Keyboard brightness / on-off
+        - label: Lighting effects
+        - label: Temperatures and fan values shown
+        - label: Fan mode max / auto
+        - label: Custom fan curve
+        - label: Performance profiles
+        - label: Charge limit
+  - type: textarea
+    id: notes
+    attributes:
+      label: What did not work / anything odd?
+      placeholder: "e.g. fans stay at full speed after switching back to auto; red looks orange"
+  - type: textarea
+    id: sysinfo
+    attributes:
+      label: Output of `clevoctl sysinfo`
+      description: In the Windows app you can also use System → Copy. Contains model, BIOS and driver versions, no personal data.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: dump
+    attributes:
+      label: Output of `clevoctl dump`
+      render: text
+  - type: textarea
+    id: linux
+    attributes:
+      label: Linux only – driver info
+      description: "Output of: `lsmod | grep -E 'clevo|tuxedo'; ls /sys/class/leds; ls -l /dev/tuxedo_io` and how you installed tuxedo-drivers."
+      render: text

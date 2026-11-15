@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- Cross-platform so CI can run the Linux backend tests on Ubuntu as well. -->
+    <TargetFramework>net9.0</TargetFramework>
+    <RuntimeIdentifier></RuntimeIdentifier>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />

@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,3 +45,54 @@ jobs:
         run: |
           Compress-Archive -Path publish/* -DestinationPath ClevoControl-${{ github.ref_name }}-win-x64.zip
           gh release create ${{ github.ref_name }} ClevoControl-${{ github.ref_name }}-win-x64.zip --generate-notes --notes "AI-generated, unofficial software – not affiliated with Clevo. See README."
+
+  linux:
+    # Linux: desktop app (Avalonia, src/ClevoControl.Desktop) + clevoctl CLI / background service.
+    runs-on: ubuntu-latest
+    needs: windows # the Windows job creates the release, this one adds its archive
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Test (Core, including the Linux backend)
+        run: dotnet test tests/ClevoControl.Tests -c Release --filter "FullyQualifiedName!~ScreenTests&FullyQualifiedName!~MonitorTests"
+
+      - name: Publish
+        run: |
+          dotnet publish src/ClevoControl.Cli -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o publish
+          dotnet publish src/ClevoControl.Desktop -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o publish
+          rm -f publish/*.pdb
+          mkdir -p publish/contrib
+          cp -r contrib/linux publish/contrib/
+          cp README.md LICENSE docs/LINUX.md publish/
+
+      - name: UI smoke test (renders every page with simulated hardware on a virtual X display)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb > /dev/null
+          export CLEVOCONTROL_CONFIG_DIR="$RUNNER_TEMP/cc-config"
+          timeout 180 xvfb-run -a ./publish/clevocontrol --screenshots "$RUNNER_TEMP/screenshots"
+          ls -l "$RUNNER_TEMP/screenshots"
+          test "$(ls "$RUNNER_TEMP/screenshots" | wc -l)" -ge 12
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-ui-screenshots
+          path: ${{ runner.temp }}/screenshots/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ClevoControl-linux-x64
+          path: publish/
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          name=ClevoControl-${{ github.ref_name }}-linux-x64
+          mv publish "$name"
+          tar -czf "$name.tar.gz" "$name"
+          gh release upload ${{ github.ref_name }} "$name.tar.gz"

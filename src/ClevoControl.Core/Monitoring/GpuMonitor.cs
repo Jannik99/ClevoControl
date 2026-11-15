@@ -25,6 +25,7 @@ public sealed record GpuSample(
 public sealed class GpuMonitor : IDisposable
 {
     private const string Nvml = "nvml.dll";
+
     private IntPtr _device;
     private bool _initialized;
 

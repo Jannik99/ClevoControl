@@ -19,7 +19,7 @@ public sealed class PowerService
 
     public PerformanceProfile? ActiveProfile { get; private set; }
 
-    public static bool IsOnAc => Win32.GetSystemPowerStatus(out var s) && s.ACLineStatus == 1;
+    public static bool IsOnAc => Platform.SystemStatus.Power().OnAc;
 
     /// <summary>Raised after a profile was sent to the EC.</summary>
     public event Action<PerformanceProfile>? ProfileApplied;
@@ -42,8 +42,23 @@ public sealed class PowerService
         }
     }
 
+    /// <summary>True if the OS power mode can be switched (Windows; Linux with power-profiles-daemon).</summary>
+    public static bool HasSystemPowerMode => OperatingSystem.IsWindows() || (OperatingSystem.IsLinux() && Platform.LinuxPower.HasPowerProfiles);
+
+    /// <summary>Windows power mode overlay, on Linux the power-profiles-daemon profile.</summary>
     public static void SetWindowsPowerMode(WindowsPowerMode mode)
     {
+        if (OperatingSystem.IsLinux())
+        {
+            Platform.LinuxPower.SetPowerProfile(mode switch
+            {
+                WindowsPowerMode.BestEfficiency => "power-saver",
+                WindowsPowerMode.BestPerformance => "performance",
+                _ => "balanced",
+            });
+            return;
+        }
+        if (!OperatingSystem.IsWindows()) return;
         var g = mode switch
         {
             WindowsPowerMode.BestEfficiency => OverlayEfficiency,
@@ -55,6 +70,17 @@ public sealed class PowerService
 
     public static WindowsPowerMode? GetWindowsPowerMode()
     {
+        if (OperatingSystem.IsLinux())
+        {
+            return Platform.LinuxPower.GetPowerProfile() switch
+            {
+                "power-saver" => WindowsPowerMode.BestEfficiency,
+                "performance" => WindowsPowerMode.BestPerformance,
+                "balanced" => WindowsPowerMode.Balanced,
+                _ => null,
+            };
+        }
+        if (!OperatingSystem.IsWindows()) return null;
         try
         {
             if (Win32.PowerGetEffectiveOverlayScheme(out var g) != 0) return null;
@@ -111,6 +137,8 @@ public static class DisplayService
 
     public static int GetRefreshRate()
     {
+        if (OperatingSystem.IsLinux()) return (int)Math.Round(Platform.LinuxPower.Panel()?.Current ?? 0);
+        if (!OperatingSystem.IsWindows()) return 0;
         var dm = New();
         return EnumDisplaySettings(null, ENUM_CURRENT_SETTINGS, ref dm) ? dm.dmDisplayFrequency : 0;
     }
@@ -118,6 +146,8 @@ public static class DisplayService
     /// <summary>Refresh rates available at the current resolution.</summary>
     public static List<int> GetRefreshRates()
     {
+        if (OperatingSystem.IsLinux()) return Platform.LinuxPower.Panel()?.Rates.Select(r => (int)Math.Round(r)).Distinct().Order().ToList() ?? [];
+        if (!OperatingSystem.IsWindows()) return [];
         var cur = New();
         if (!EnumDisplaySettings(null, ENUM_CURRENT_SETTINGS, ref cur)) return [];
         var set = new SortedSet<int>();
@@ -134,6 +164,8 @@ public static class DisplayService
 
     public static bool SetRefreshRate(int hz)
     {
+        if (OperatingSystem.IsLinux()) return Platform.LinuxPower.SetRefreshRate(hz);
+        if (!OperatingSystem.IsWindows()) return false;
         var rates = GetRefreshRates();
         if (rates.Count == 0) return false;
         var best = rates.OrderBy(r => Math.Abs(r - hz)).First();
@@ -147,6 +179,7 @@ public static class DisplayService
     /// <summary>Internal panel brightness (0..100) via WMI, null if not supported.</summary>
     public static int? GetBrightness()
     {
+        if (OperatingSystem.IsLinux()) return Platform.LinuxPower.GetBrightness();
         try
         {
             using var s = new System.Management.ManagementObjectSearcher(@"root\wmi", "SELECT CurrentBrightness FROM WmiMonitorBrightness");
@@ -158,6 +191,7 @@ public static class DisplayService
 
     public static void SetBrightness(int percent)
     {
+        if (OperatingSystem.IsLinux()) { Platform.LinuxPower.SetBrightness(percent); return; }
         try
         {
             using var s = new System.Management.ManagementObjectSearcher(@"root\wmi", "SELECT * FROM WmiMonitorBrightnessMethods");

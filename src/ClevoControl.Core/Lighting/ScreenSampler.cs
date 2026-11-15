@@ -1,49 +1,26 @@
-using ClevoControl.Core.Native;
+using ClevoControl.Core.Platform;
 
 namespace ClevoControl.Core.Lighting;
 
 public sealed record MonitorInfo(int Index, string Name, int X, int Y, int Width, int Height, bool Primary);
 
 /// <summary>
-/// Samples the average color of a monitor by letting GDI downscale it into a tiny bitmap.
-/// Cheap (a few ms per frame) and works with every GPU. DRM-protected video may appear black.
+/// Samples the average color of a monitor from a tiny downscaled copy of the screen
+/// (Windows: GDI, Linux: X11 or grim). Cheap, works with every GPU; DRM-protected video may appear black.
 /// </summary>
-public sealed unsafe class ScreenSampler : IDisposable
+public sealed class ScreenSampler : IDisposable
 {
     private const int W = 48, H = 27;
-    private readonly IntPtr _memDc, _bitmap, _oldBitmap;
-    private readonly uint* _pixels;
+    private readonly IScreenGrabber? _grabber = ScreenGrabber.Create();
+    private readonly uint[] _pixels = new uint[W * H];
 
-    public ScreenSampler()
-    {
-        var screen = Win32.GetDC(IntPtr.Zero);
-        _memDc = Win32.CreateCompatibleDC(screen);
-        Win32.ReleaseDC(IntPtr.Zero, screen);
-        var bmi = new Win32.BITMAPINFOHEADER
-        {
-            biSize = (uint)sizeof(Win32.BITMAPINFOHEADER), biWidth = W, biHeight = -H, biPlanes = 1, biBitCount = 32,
-        };
-        _bitmap = Win32.CreateDIBSection(_memDc, bmi, 0, out var bits, IntPtr.Zero, 0);
-        _pixels = (uint*)bits;
-        _oldBitmap = Win32.SelectObject(_memDc, _bitmap);
-        Win32.SetStretchBltMode(_memDc, Win32.HALFTONE);
-        Win32.SetBrushOrgEx(_memDc, 0, 0, IntPtr.Zero);
-    }
+    /// <summary>False if this desktop does not allow screen capture (see <see cref="ScreenGrabber.UnsupportedReason"/>).</summary>
+    public bool Available => _grabber is not null;
 
     public static List<MonitorInfo> GetMonitors()
     {
-        var list = new List<MonitorInfo>();
-        Win32.EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr h, IntPtr _, ref Win32.RECT _, IntPtr _) =>
-        {
-            var info = new Win32.MONITORINFOEX { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Win32.MONITORINFOEX>() };
-            if (Win32.GetMonitorInfo(h, ref info))
-            {
-                var r = info.rcMonitor;
-                list.Add(new MonitorInfo(list.Count, info.szDevice, r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top, (info.dwFlags & 1) != 0));
-            }
-            return true;
-        }, IntPtr.Zero);
-        return list;
+        try { return ScreenGrabber.Monitors(); }
+        catch { return []; }
     }
 
     /// <summary>
@@ -52,22 +29,16 @@ public sealed unsafe class ScreenSampler : IDisposable
     /// </summary>
     public RgbColor? Sample(MonitorInfo monitor)
     {
-        var screen = Win32.GetDC(IntPtr.Zero);
-        try
-        {
-            if (!Win32.StretchBlt(_memDc, 0, 0, W, H, screen, monitor.X, monitor.Y, monitor.Width, monitor.Height, Win32.SRCCOPY))
-                return null;
-        }
-        finally
-        {
-            Win32.ReleaseDC(IntPtr.Zero, screen);
-        }
+        if (_grabber is null || !_grabber.Grab(monitor.X, monitor.Y, monitor.Width, monitor.Height, W, H, _pixels)) return null;
+        return Representative(_pixels);
+    }
 
+    internal static RgbColor Representative(ReadOnlySpan<uint> pixels)
+    {
         double r = 0, g = 0, b = 0, weight = 0, plainR = 0, plainG = 0, plainB = 0;
-        var n = W * H;
-        for (var i = 0; i < n; i++)
+        var n = pixels.Length;
+        foreach (var p in pixels)
         {
-            var p = _pixels[i];
             double pb = p & 0xFF, pg = (p >> 8) & 0xFF, pr = (p >> 16) & 0xFF;
             plainR += pr; plainG += pg; plainB += pb;
             var max = Math.Max(pr, Math.Max(pg, pb));
@@ -88,10 +59,5 @@ public sealed unsafe class ScreenSampler : IDisposable
         return new RgbColor(C(r * scale), C(g * scale), C(b * scale));
     }
 
-    public void Dispose()
-    {
-        Win32.SelectObject(_memDc, _oldBitmap);
-        Win32.DeleteObject(_bitmap);
-        Win32.DeleteDC(_memDc);
-    }
+    public void Dispose() => _grabber?.Dispose();
 }

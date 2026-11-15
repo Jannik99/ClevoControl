@@ -6,12 +6,21 @@
 
 <p align="center">
   A modern, open-source control center for Clevo laptops – keyboard RGB, effects, fans, performance profiles and more.<br>
-  <a href="#deutsch">🇩🇪 Deutsche Version weiter unten</a>
+  Windows · Linux (experimental)<br>
+  <a href="#supported-models">Supported models</a> ·
+  <a href="docs/LINUX.md">Linux</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a> ·
+  <a href="#deutsch">🇩🇪 Deutsch</a>
 </p>
 
 > [!IMPORTANT]
 > **This software is AI-generated.** The code was written with [Claude](https://claude.ai) (Anthropic) and tested on a Clevo N9x0TD_TF.
 > It is an **unofficial** community project and **not affiliated with, endorsed by or supported by Clevo Co.** Use at your own risk – see [License](#license).
+
+> [!TIP]
+> **Got a Clevo-based laptop?** The quickest way to help is a
+> [model report](https://github.com/Jannik99/ClevoControl/issues/new?template=model_report.yml) – it takes two minutes
+> and tells everyone whether ClevoControl works on your model.
 
 ![Home](docs/images/dashboard.png)
 
@@ -48,6 +57,8 @@
 
 ## Requirements
 
+### Windows
+
 * Windows 10/11 (x64) – the UI uses the native Windows 11 Fluent theme
 * [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0) (not needed for the self-contained release build)
 * A Clevo-based laptop with the **Clevo Control Center driver** installed (`InsydeDCHU.dll` / “AcpiBridge”, normally installed together with Clevo's Control Center from the Microsoft Store or the vendor's driver page).
@@ -56,22 +67,92 @@
 
 Without the driver, the app starts in **simulation mode** so you can still look around.
 
-### Tested hardware
+### Linux (experimental)
 
-| Model | Keyboard | Status |
+* x86-64 Linux with the open-source [tuxedo-drivers](https://github.com/tuxedocomputers/tuxedo-drivers) kernel modules
+* The **ClevoControl desktop app** (same pages as on Windows), the `clevoctl` command-line tool and an optional background service
+* X11 and Wayland; a few features depend on the desktop (screen capture, focused-window detection) – see the feature table
+
+See **[docs/LINUX.md](docs/LINUX.md)** for setup, the full feature list and current limitations.
+
+## Supported models
+
+ClevoControl talks to the embedded controller through **Clevo's own firmware interface** (the ACPI device `CLV0001`,
+used by Clevo's Windows driver and by the Linux `clevo_acpi`/`clevo_wmi` modules). Whether a laptop is supported
+therefore depends on the **board inside**, not on the brand on the lid: Clevo boards are sold by Schenker/XMG,
+TUXEDO, Sager, Eurocom, Origin, PCSpecialist, Nexoc and many others – and the same brands also sell laptops from
+other manufacturers that will **not** work.
+
+> [!TIP]
+> **Not sure?** Run `clevoctl detect`. It checks the firmware interfaces (and on Linux the driver) and tells you
+> whether ClevoControl will work. The app shows the same check under *About & support*.
+
+### Reported by users
+
+Models someone actually ran ClevoControl on. ✅ works · ⚠️ partly · ❌ does not work · ❔ not tested yet
+
+| Model (board) | Keyboard | Windows | Linux | Notes |
+|---|---|---|---|---|
+| Clevo N9x0TD_TF (N950TD, N960TF) | 1-zone RGB | ✅ | ❔ | Development machine. Colors, brightness, sensors, fan modes and curve, performance profiles, local API. Hardware effects not fully confirmed yet. FlexiCharger not available via software (BIOS only). |
+
+**Your model is missing?** Please open a
+[model report](https://github.com/Jannik99/ClevoControl/issues/new?template=model_report.yml), even if only
+some things work – that is just as useful. Include the output of `clevoctl detect`, `clevoctl sysinfo` and `clevoctl dump`.
+
+### Expected to work (Clevo boards, not tested yet)
+
+These laptops use Clevo boards with the Clevo interface, so they *should* work – but nobody has confirmed it yet.
+Reports are very welcome. Sources: [notebookcheck](https://www.notebookcheck.net) reviews, Eurocom, and the board quirks in
+[tuxedo-drivers](https://github.com/tuxedocomputers/tuxedo-drivers/blob/main/src/clevo_keyboard.h).
+
+| Sold as | Clevo board | Notes |
 |---|---|---|
-| Clevo N9x0TD_TF (N950TD/N960TF) | 1-zone RGB | ✅ colors, brightness, sensors, fan modes, performance profiles (fixed in 0.1.1), local API · ⏳ hardware effects still being confirmed |
+| XMG Pro 15 (2019) / XMG Pro 17 (2019) | PB51RF-G / PB71RD-G | |
+| XMG Pro 15 (2021, Late 2021) / XMG Pro 17 (2021/22) | PC50DS, PC50HS-D / PC70HS | |
+| XMG Pro 15 E23 | PD50SND-G | keyboard may be per-key RGB (see below) |
+| XMG Focus 15 / 17 (2021) | NP50HK / NP70HK | |
+| XMG Apex 15 (2020), Eurocom Nightsky ARX15 | NH57AF1 | |
+| XMG Ultra 17 (2020), Sager NP9670, Origin EON17-X | X170SM-G | keyboard may be per-key RGB |
+| XMG Ultra 17 E21, Sager NP9672M, Origin EON-X | X170KM-G | per-key RGB: fans and profiles only |
+| Nexoc GH7 | NH77DCQ | |
+| TUXEDO Aura 14/15 Gen3 | NL45PU2 / NL57PU, NL45AU2 / NL57AU | |
+| TUXEDO XP14 | NV4XMB, NV4XME, NV4XMZ | |
+| TUXEDO InfinityBook Pro v3 | N13xWU / N14xWU | white keyboard, older generation (DCHU on Windows uncertain) |
+| Other Clevo boards: NH5x/NH7x, NP5x/NP7x, NL5x, NS50, PB5x/PB7x, PC5x/PC7x, PD5x/PD7x, PE6x/PE7x, X170, P95x, N24/25BU, L14xMU … | | expected; check with `clevoctl detect` |
 
-Other Clevo models using the same InsydeDCHU interface (many sold as Schenker/XMG, Tuxedo, System76, Medion Erazer, Eurocom, PCSpecialist …) will probably work as well. 3-zone keyboards are supported as one color, per-key keyboards are not supported yet.
-**Please report your model** in an issue (include the output of `clevoctl dump`).
+### Not supported
+
+| Laptops | Why |
+|---|---|
+| **TongFang / Uniwill** based models, e.g. XMG Neo 15 (2019) and Neo 16, XMG Core 15, XMG Fusion 15, Eluktronics Mech-15 G3 / MAG-15, Medion Erazer Beast X20/X25/X30 and Major X20, TUXEDO Polaris, Stellaris, Pulse 15 Gen2, InfinityBook Pro Gen7/Gen8 | Different manufacturer and firmware interface (Uniwill). Use TUXEDO Control Center or the vendor's tool. `clevoctl detect` recognises them. |
+| **System76** laptops with System76 Open Firmware / open EC (e.g. Darter Pro darp6+, Galago Pro galp5+, Gazelle gaze15+, Lemur Pro lemp9+, Oryx Pro oryp6–oryp12) | Clevo hardware, but the Clevo firmware interface is replaced by System76's own (`system76_acpi`). Expected not to work (not verified). |
+| NovaCustom / Dasharo coreboot machines | Same as System76 open EC – probably not supported (not verified). |
+| TUXEDO Sirius and other non-Clevo, non-Uniwill TUXEDO lines | Different platform. |
+| Eurocom C315 Blitz, Eurocom Raptor X15 | Not the Clevo boards their names suggest – unknown. |
+
+### Known limits
+
+* **Per-key RGB keyboards** (ITE USB controller, e.g. X170KM-G): keyboard lighting is not supported yet; fans, profiles and sensors are.
+  `clevoctl detect` shows whether your keyboard is one of them.
+* **3-zone keyboards** get one color for all zones in the app (the `clevoctl color <hex> <zone>` command can set zones).
+* **Linux on newer CPUs:** the current upstream tuxedo-drivers refuse to load on laptops that are not sold by TUXEDO
+  if the CPU is newer than Intel 12th gen (Alder Lake) or a newer Ryzen generation. Such Clevo laptops need a
+  build of the drivers without this compatibility check – see [docs/LINUX.md](docs/LINUX.md#1-install-the-kernel-driver).
+  Windows is not affected.
 
 ## Install
+
+### Windows
 
 1. Download the latest release from the [Releases](../../releases) page and unzip it.
 2. Run `ClevoControl.exe`. On first start it adopts the performance profile the laptop is currently using.
 3. Optional: *Settings → Start with Windows*.
 
 > Windows SmartScreen may warn because the build is not code-signed. Click *More info → Run anyway*, or build it yourself.
+
+### Linux
+
+Download `ClevoControl-<version>-linux-x64.tar.gz` from the [Releases](../../releases) page and follow [docs/LINUX.md](docs/LINUX.md).
 
 ### Build from source
 
@@ -83,6 +164,9 @@ dotnet test
 # self-contained single-file build:
 dotnet publish src/ClevoControl.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o publish
 ```
+
+On Linux (or to build the Linux CLI on Windows): `dotnet publish src/ClevoControl.Cli -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o publish`.
+More in [CONTRIBUTING.md](CONTRIBUTING.md#building).
 
 ## Safety
 
@@ -115,7 +199,9 @@ curl -X POST http://127.0.0.1:3002/effect -d "{\"effect\":\"Spectrum\"}"
 
 ## How it works
 
-Clevo's driver package installs `InsydeDCHU.dll`, which talks to the embedded controller (EC) through ACPI. ClevoControl loads that DLL at runtime and calls it directly. All command numbers and data formats are documented in [docs/PROTOCOL.md](docs/PROTOCOL.md).
+On **Windows**, Clevo's driver package installs `InsydeDCHU.dll`, which talks to the embedded controller (EC) through ACPI. ClevoControl loads that DLL at runtime and calls it directly.
+On **Linux**, the open-source tuxedo-drivers modules send the same EC commands; ClevoControl uses their `/dev/tuxedo_io` device and the kernel's LED interface.
+All command numbers and data formats are documented in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ## Not included (on purpose)
 
@@ -124,7 +210,15 @@ Clevo's driver package installs `InsydeDCHU.dll`, which talks to the embedded co
 
 ## Contributing
 
-Issues and pull requests are welcome – especially reports from other Clevo models. Please keep in mind that the codebase is AI-generated; reviews and refactorings are appreciated.
+Contributions are very welcome – you don't need to write code to help:
+
+* **Report your model** – [model report](https://github.com/Jannik99/ClevoControl/issues/new?template=model_report.yml) (works / doesn't work, two minutes)
+* **Test on Linux** – the Linux backend has not run on real hardware yet, see [docs/LINUX.md](docs/LINUX.md)
+* **Report bugs** – [bug report](https://github.com/Jannik99/ClevoControl/issues/new?template=bug_report.yml)
+* **Code** – good first areas are the Linux features marked ❌ in [docs/LINUX.md](docs/LINUX.md#what-works), translations and new lighting effects
+
+Read **[CONTRIBUTING.md](CONTRIBUTING.md)** for how to build, how the code is organised and the safety rules for EC commands.
+The codebase is AI-generated; reviews and refactorings are appreciated.
 
 ## License
 

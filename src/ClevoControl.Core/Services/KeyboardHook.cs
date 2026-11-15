@@ -34,7 +34,8 @@ public sealed class KeyboardHook : IDisposable
     {
         _proc = Callback;
         _thread = new Thread(Run) { IsBackground = true, Name = "KeyboardHook" };
-        _thread.Start();
+        // Global keyboard hooks are Windows-only; elsewhere the hook stays inactive.
+        if (OperatingSystem.IsWindows()) _thread.Start();
     }
 
     public volatile bool BlockWindowsKey;

@@ -143,7 +143,8 @@ public sealed class KeyRemapService
 
     private const uint KEYUP = 0x0002, UNICODE = 0x0004, EXTENDED = 0x0001;
 
-    private static bool IsDown(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;
+    // Live remapping is Windows-only (Linux uses the keyd export), so other systems report "not pressed".
+    private static bool IsDown(int vk) => OperatingSystem.IsWindows() && (GetAsyncKeyState(vk) & 0x8000) != 0;
 
     private static INPUT Key(int vk, bool up, bool unicode = false, char ch = '\0')
     {
@@ -155,6 +156,7 @@ public sealed class KeyRemapService
 
     private static void Send(List<INPUT> inputs)
     {
+        if (!OperatingSystem.IsWindows()) return;
         if (inputs.Count > 0) SendInput((uint)inputs.Count, [.. inputs], Marshal.SizeOf<INPUT>());
     }
 

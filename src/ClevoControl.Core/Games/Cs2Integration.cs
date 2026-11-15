@@ -114,9 +114,18 @@ public sealed class Cs2Integration : IDisposable
 
     private static IEnumerable<string> SteamLibraries()
     {
-        var steam = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath", null) as string;
+        string? steam;
+        if (OperatingSystem.IsWindows())
+        {
+            steam = (Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath", null) as string)?.Replace('/', '\\');
+        }
+        else
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            steam = new[] { ".steam/steam", ".local/share/Steam", ".var/app/com.valvesoftware.Steam/.local/share/Steam" }
+                .Select(p => Path.Combine(home, p)).FirstOrDefault(Directory.Exists);
+        }
         if (string.IsNullOrEmpty(steam)) yield break;
-        steam = steam.Replace('/', '\\');
         yield return steam;
         var vdf = Path.Combine(steam, "steamapps", "libraryfolders.vdf");
         if (!File.Exists(vdf)) yield break;

@@ -1,5 +1,5 @@
 using ClevoControl.Core.Hardware;
-using ClevoControl.Core.Native;
+using ClevoControl.Core.Platform;
 
 namespace ClevoControl.Core.Services;
 
@@ -72,20 +72,15 @@ public sealed class SensorService : IDisposable
 
     private double ReadCpuLoad()
     {
-        if (!Win32.GetSystemTimes(out var idle, out var kernel, out var user)) return 0;
-        var total = kernel.Value + user.Value; // kernel includes idle
-        var dIdle = idle.Value - _lastIdle;
+        if (SystemStatus.CpuTimes() is not var (idle, total)) return 0;
+        var dIdle = idle - _lastIdle;
         var dTotal = total - _lastTotal;
-        _lastIdle = idle.Value;
+        _lastIdle = idle;
         _lastTotal = total;
         return dTotal == 0 ? 0 : Math.Clamp(100.0 * (dTotal - dIdle) / dTotal, 0, 100);
     }
 
-    private static (double Percent, double TotalGb) ReadMemory()
-    {
-        var m = new Win32.MEMORYSTATUSEX { dwLength = (uint)System.Runtime.InteropServices.Marshal.SizeOf<Win32.MEMORYSTATUSEX>() };
-        return Win32.GlobalMemoryStatusEx(ref m) ? (m.dwMemoryLoad, m.ullTotalPhys / 1024d / 1024 / 1024) : (0, 0);
-    }
+    private static (double Percent, double TotalGb) ReadMemory() => SystemStatus.Memory();
 
     public void Dispose() => _timer.Dispose();
 }

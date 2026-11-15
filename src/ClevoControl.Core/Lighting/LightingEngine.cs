@@ -289,10 +289,9 @@ public sealed class LightingEngine : IDisposable
 
             case LightingEffectKind.Battery:
             {
-                Win32.GetSystemPowerStatus(out var ps);
-                var pct = ps.BatteryLifePercent <= 100 ? ps.BatteryLifePercent : 100;
+                var (onAc, pct, _) = Platform.SystemStatus.Power();
                 var c = RgbColor.FromHsv(120 * pct / 100.0, 1, 1);
-                var charging = ps.ACLineStatus == 1 && pct < 100;
+                var charging = onAc && pct < 100;
                 if (charging) c = c.Scale(0.35 + 0.65 * (Math.Sin(t * 2) + 1) / 2);
                 else if (pct <= 15) c = c.Scale(Math.Abs(Math.Sin(t * 3)));
                 return (c, charging || pct <= 15 ? 50 : 5000);
@@ -470,22 +469,19 @@ public sealed class LightingEngine : IDisposable
 
     private void EnsureResources(LightingEffectKind effect)
     {
-        if (effect == LightingEffectKind.Ambient) _screen ??= new ScreenSampler();
+        // Screen capture: GDI on Windows, X11 or grim on Linux; where the desktop forbids it these effects stay idle.
+        var canCapture = Platform.ScreenGrabber.UnsupportedReason is null;
+        if (effect == LightingEffectKind.Ambient && canCapture) _screen ??= new ScreenSampler();
         else if (_screen is not null) { _screen.Dispose(); _screen = null; }
 
-        if (effect == LightingEffectKind.ScreenRegion) _region ??= new RegionSampler();
+        if (effect == LightingEffectKind.ScreenRegion && canCapture) _region ??= new RegionSampler();
         else if (_region is not null) { _region.Dispose(); _region = null; }
 
         if (effect == LightingEffectKind.Music) _audio.Start();
         else if (_audio.IsRunning) _audio.Stop();
     }
 
-    private static TimeSpan IdleTime()
-    {
-        var info = new Win32.LASTINPUTINFO { cbSize = 8 };
-        if (!Win32.GetLastInputInfo(ref info)) return TimeSpan.Zero;
-        return TimeSpan.FromMilliseconds(unchecked((uint)Environment.TickCount - info.dwTime));
-    }
+    private static TimeSpan IdleTime() => Platform.SystemStatus.IdleTime();
 
     public void Dispose()
     {

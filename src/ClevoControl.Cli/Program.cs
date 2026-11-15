@@ -21,17 +21,22 @@ if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
           fan auto|max                   fan mode
           fan duty <cpu%> [gpu%]         fixed fan duty (use with care; 'fan auto' to undo)
           profile quiet|powersaving|performance|entertainment
-          cooling status|normal|cool|verycool   turbo / CPU limit via the Windows power plan
-          charge status                  FlexiCharger state (if the model supports it)
+          cooling status|normal|cool|verycool   turbo / CPU limit (Windows power plan, Linux intel_pstate)
+          charge status                  charge limit state (if the model supports it)
           charge <start> <stop> | charge off
-          gpu [seconds]                  load of all GPUs (NVML + Windows engine counters)
+          gpu [seconds]                  GPU load (NVIDIA via NVML; Windows also shows integrated GPUs)
           sysinfo                        model, BIOS, EC, drivers (for bug reports)
           dump                           raw EC buffers (for bug reports)
+          detect                         does this laptop have the Clevo interface? (Linux: also driver status)
+          daemon                         run lighting effects, fan curve, profiles and the local API
+                                         from settings.json until stopped (used by the Linux service)
 
         Options: --simulate   use simulated hardware
         """);
     return 0;
 }
+
+if (args[0].Equals("daemon", StringComparison.OrdinalIgnoreCase)) return Daemon.Run(hw);
 
 if (!hw.IsReal) Console.Error.WriteLine($"warning: {hw.Description}");
 
@@ -81,14 +86,21 @@ try
             break;
         case "cooling":
         {
+            if (!ClevoControl.Core.Services.CoolingService.IsSupported) { Console.Error.WriteLine("Cooling modes are not available: the CPU driver offers no turbo switch (intel_pstate / cpufreq boost)."); return 1; }
             var arg = args.Length > 1 ? args[1].ToLowerInvariant() : "status";
             if (arg != "status")
             {
                 var mode = Enum.Parse<ClevoControl.Core.Services.CoolingMode>(arg, true);
-                if (!ClevoControl.Core.Services.CoolingService.Apply(mode)) { Console.Error.WriteLine("Windows refused the change."); return 1; }
+                if (!ClevoControl.Core.Services.CoolingService.Apply(mode))
+                {
+                    Console.Error.WriteLine(OperatingSystem.IsWindows() ? "Windows refused the change." : "Not permitted – install the ClevoControl permissions (contrib/linux/install.sh, see docs/LINUX.md) or run with sudo.");
+                    return 1;
+                }
             }
             var (boost, max) = ClevoControl.Core.Services.CoolingService.Read();
-            Console.WriteLine($"Mode: {ClevoControl.Core.Services.CoolingService.Detect()}  (turbo boost mode {boost}, max processor state {max} %)");
+            Console.WriteLine(OperatingSystem.IsWindows()
+                ? $"Mode: {ClevoControl.Core.Services.CoolingService.Detect()}  (turbo boost mode {boost}, max processor state {max} %)"
+                : $"Mode: {ClevoControl.Core.Services.CoolingService.Detect()}  (turbo {(boost != 0 ? "on" : "off")}, max performance {max} %)");
             break;
         }
         case "charge":
@@ -105,12 +117,14 @@ try
         case "gpu":
         {
             using var nv = new ClevoControl.Core.Monitoring.GpuMonitor();
-            var eng = new ClevoControl.Core.Monitoring.GpuEngineMonitor();
+            var eng = OperatingSystem.IsWindows() ? new ClevoControl.Core.Monitoring.GpuEngineMonitor() : null;
             var n = args.Length > 1 ? int.Parse(args[1]) : 1;
             for (var i = 0; i < n; i++)
             {
                 Thread.Sleep(1000);
                 if (nv.Sample() is { } s) Console.WriteLine($"{nv.Name}: load {s.LoadPercent:0} %, {s.PowerW:0} W, {s.CoreClockMhz:0} MHz, VRAM {s.VramUsedMb:0}/{s.VramTotalMb:0} MB, P{s.PState}");
+                else if (i == 0) Console.WriteLine("No NVIDIA GPU found (NVML not available).");
+                if (eng is null) continue;
                 foreach (var a in eng.Sample()) Console.WriteLine($"  {a.Name}: engines max {a.LoadPercent:0} %  ({string.Join(", ", a.EngineLoad.Where(e => e.Value >= 1).Select(e => $"{e.Key} {e.Value:0} %"))})");
             }
             break;
@@ -118,6 +132,14 @@ try
         case "sysinfo":
             Console.Write(ClevoControl.Core.Services.SystemInfoService.AsText(ClevoControl.Core.Services.SystemInfoService.Collect(hw)));
             break;
+        case "detect":
+        {
+            var r = ClevoControl.Core.Platform.SupportCheck.Run(hw);
+            foreach (var f in r.Findings) Console.WriteLine($"  {(f.Ok ? "ok " : " - ")} {f.Text}");
+            Console.WriteLine();
+            Console.WriteLine($"{r.Verdict}: {r.Summary}");
+            return r.Verdict == ClevoControl.Core.Platform.SupportVerdict.NotSupported ? 3 : 0;
+        }
         case "dump":
             Console.WriteLine("spec (0x0D): " + Convert.ToHexString(hw.ReadSpecBuffer().AsSpan(0, 64)));
             Console.WriteLine("fan  (0x0C): " + Convert.ToHexString(hw.ReadFanBuffer().AsSpan(0, 64)));

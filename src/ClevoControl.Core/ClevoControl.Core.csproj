@@ -2,12 +2,15 @@
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>ClevoControl.Core</RootNamespace>
+    <!-- Cross-platform (Windows + Linux). Windows-only code is guarded with OperatingSystem.IsWindows(). -->
+    <TargetFramework>net9.0</TargetFramework>
+    <RuntimeIdentifier></RuntimeIdentifier>
+    <!-- CA1416 (platform compatibility): Windows-only call sites are guarded at runtime. -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="ClevoControl.Tests" />
   </ItemGroup>
-  <PropertyGroup>
-  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
     <PackageReference Include="System.Management" Version="9.0.0" />

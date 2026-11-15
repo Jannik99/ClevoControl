@@ -1,0 +1,47 @@
+name: Bug report
+description: Something does not work as expected
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Laptop model
+      placeholder: "e.g. Clevo N960TF"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ClevoControl version
+    validations:
+      required: true
+  - type: textarea
+    id: sysinfo
+    attributes:
+      label: Output of `clevoctl sysinfo`
+      render: text
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        The relevant part of the log file: `%APPDATA%\ClevoControl\clevocontrol.log` (Windows) or `~/.config/ClevoControl/clevocontrol.log` (Linux).
+        It contains no personal data.
+      render: text

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=ClevoControl
+GenericName=Laptop control center
+Comment=Keyboard lighting, fans and performance profiles for Clevo laptops
+Exec=/usr/local/bin/clevocontrol
+Icon=clevocontrol
+Terminal=false
+Categories=System;Settings;HardwareSettings;
+Keywords=Clevo;keyboard;RGB;fan;TUXEDO;XMG;Schenker;
+StartupWMClass=ClevoControl

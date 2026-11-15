@@ -75,6 +75,8 @@ public class ScreenTests
         var monitors = ScreenSampler.GetMonitors();
         Assert.NotEmpty(monitors);
         Assert.All(monitors, m => Assert.True(m.Width > 0 && m.Height > 0));
+        // Desktops that forbid screen capture (GNOME/KDE on Wayland without grim) are a supported case, not a failure.
+        if (ClevoControl.Core.Platform.ScreenGrabber.UnsupportedReason is not null) return;
         using var sampler = new ScreenSampler();
         Assert.NotNull(sampler.Sample(monitors[0]));
     }

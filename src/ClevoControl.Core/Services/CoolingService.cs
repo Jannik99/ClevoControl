@@ -18,6 +18,9 @@ public enum CoolingMode
 /// </summary>
 public static class CoolingService
 {
+    /// <summary>False on Linux systems whose CPU driver offers no turbo switch.</summary>
+    public static bool IsSupported => OperatingSystem.IsWindows() || (OperatingSystem.IsLinux() && Platform.LinuxPower.CanControlTurbo);
+
     private static readonly Guid SubProcessor = new("54533251-82be-4824-96c1-47b60b740d00");
     private static readonly Guid MaxProcessorState = new("bc5038f7-23e0-4960-96da-33abaf5935ec");
     private static readonly Guid PerfBoostMode = new("be337238-0d82-4146-a960-4f3749d470c7");
@@ -39,6 +42,11 @@ public static class CoolingService
     /// <summary>Reads the current state of the active plan (AC values). Boost: 0 off, 1 on, 2 aggressive …</summary>
     public static (uint BoostMode, int MaxStatePercent) Read()
     {
+        if (OperatingSystem.IsLinux())
+        {
+            var (turbo, maxPct) = Platform.LinuxPower.ReadCpuLimits();
+            return (turbo ? 2u : 0u, maxPct);
+        }
         var scheme = ActiveScheme();
         var sub = SubProcessor;
         var boost = PerfBoostMode;
@@ -65,6 +73,17 @@ public static class CoolingService
     /// <summary>Applies the mode. Returns false if Windows refused (e.g. plan managed by policy).</summary>
     public static bool Apply(CoolingMode mode, uint normalBoost = 2, uint normalMax = 100)
     {
+        if (OperatingSystem.IsLinux())
+        {
+            // intel_pstate / cpufreq boost; needs the permissions from contrib/linux (docs/LINUX.md).
+            return mode switch
+            {
+                CoolingMode.Cool => Platform.LinuxPower.ApplyCpuLimits(false, 100),
+                CoolingMode.VeryCool => Platform.LinuxPower.ApplyCpuLimits(false, 80),
+                _ => Platform.LinuxPower.ApplyCpuLimits(true, (int)Math.Max(normalMax, 50u)),
+            };
+        }
+        if (!OperatingSystem.IsWindows()) return false;
         var (boost, max) = mode switch
         {
             CoolingMode.Cool => (0u, 100u),

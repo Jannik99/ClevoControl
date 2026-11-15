@@ -1,0 +1,13 @@
+# ClevoControl – lets members of the "clevocontrol" group use the Clevo hardware without root.
+# Installed to /etc/udev/rules.d/ by contrib/linux/install.sh. Needs tuxedo-drivers.
+
+# Fans, temperatures and performance profile (tuxedo_io)
+KERNEL=="tuxedo_io", GROUP="clevocontrol", MODE="0660"
+
+# Keyboard backlight (LED class attributes are writable by root only by default)
+ACTION=="add", SUBSYSTEM=="leds", KERNEL=="rgb:kbd_backlight*|white:kbd_backlight*", \
+  RUN+="/bin/sh -c 'cd /sys%p && chgrp clevocontrol brightness multi_intensity 2>/dev/null; chmod g+w brightness multi_intensity 2>/dev/null; true'"
+
+# Battery charge thresholds, if the battery driver offers them
+ACTION=="add", SUBSYSTEM=="power_supply", ATTR{type}=="Battery", \
+  RUN+="/bin/sh -c 'cd /sys%p && chgrp clevocontrol charge_control_start_threshold charge_control_end_threshold 2>/dev/null; chmod g+w charge_control_start_threshold charge_control_end_threshold 2>/dev/null; true'"

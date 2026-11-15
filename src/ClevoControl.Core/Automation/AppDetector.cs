@@ -29,10 +29,14 @@ public static class AppDetector
     private static readonly HashSet<string> Ignore = new(StringComparer.OrdinalIgnoreCase)
     {
         "explorer", "ClevoControl", "SearchHost", "StartMenuExperienceHost", "ShellExperienceHost", "LockApp", "Taskmgr", "dwm",
+        // Linux desktops and ClevoControl itself
+        "clevocontrol", "clevoctl", "gnome-shell", "plasmashell", "kwin_wayland", "kwin_x11", "Xorg", "Xwayland", "xfdesktop", "nautilus", "dolphin",
     };
 
-    public static ForegroundApp? Foreground()
+    public static ForegroundApp? Foreground(AutoProfileSettings? settings = null)
     {
+        if (OperatingSystem.IsLinux()) return LinuxForeground(settings);
+        if (!OperatingSystem.IsWindows()) return null;
         var hwnd = GetForegroundWindow();
         if (hwnd == IntPtr.Zero) return null;
         GetWindowThreadProcessId(hwnd, out var pid);
@@ -55,6 +59,29 @@ public static class AppDetector
         return name is null ? null : new ForegroundApp(name, path, title.ToString());
     }
 
+
+    /// <summary>
+    /// Linux: the focused window where the desktop tells us (X11, KDE with kdotool); otherwise
+    /// the most relevant known app that is running (games first), since GNOME/Wayland hide the focus.
+    /// </summary>
+    private static ForegroundApp? LinuxForeground(AutoProfileSettings? settings)
+    {
+        if (Platform.LinuxProcesses.ActiveWindow() is { } w && Platform.LinuxProcesses.Describe(w.Pid) is { } id)
+            return new ForegroundApp(id.Name, id.Path, w.Title);
+
+        settings ??= new AutoProfileSettings { DetectFullscreenGames = false };
+        ForegroundApp? best = null;
+        var bestRank = int.MaxValue;
+        foreach (var p in Platform.LinuxProcesses.All())
+        {
+            var app = new ForegroundApp(p.Name, p.Path, "");
+            var d = Classify(app, settings);
+            if (d.Category == AppCategory.None) continue;
+            var rank = d.Category == AppCategory.Game ? 0 : 1 + (int)d.Category;
+            if (rank < bestRank) { best = app; bestRank = rank; }
+        }
+        return best;
+    }
     private static string? SafeProcessName(int pid)
     {
         try { return Process.GetProcessById(pid).ProcessName; }
@@ -63,6 +90,7 @@ public static class AppDetector
 
     public static bool IsExclusiveFullscreen()
     {
+        if (!OperatingSystem.IsWindows()) return false;
         try { return SHQueryUserNotificationState(out var s) == 0 && s == QUNS_RUNNING_D3D_FULL_SCREEN; }
         catch { return false; }
     }
@@ -95,7 +123,8 @@ public static class AppDetector
 
         if (app.Path is { } path)
         {
-            if (AppCatalog.GameFolders.Any(f => path.Contains(f, StringComparison.OrdinalIgnoreCase)))
+            var winPath = path.Replace('/', '\\'); // Linux paths match the same folder names
+            if (AppCatalog.GameFolders.Any(f => winPath.Contains(f, StringComparison.OrdinalIgnoreCase)))
                 return new Detection(AppCategory.Game, Pretty(app), app.ProcessName);
             // Unreal Engine games always ship as "<Name>-Win64-Shipping.exe" (or -WinGDK-/-EGS-).
             if (app.ProcessName.EndsWith("-Shipping", StringComparison.OrdinalIgnoreCase))

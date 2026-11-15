@@ -3,6 +3,10 @@
     <OutputType>Exe</OutputType>
     <AssemblyName>clevoctl</AssemblyName>
     <RootNamespace>ClevoControl.Cli</RootNamespace>
+    <!-- Runs on Windows and Linux; pick the runtime with `dotnet publish -r win-x64` or `-r linux-x64`. -->
+    <TargetFramework>net9.0</TargetFramework>
+    <RuntimeIdentifier></RuntimeIdentifier>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\ClevoControl.Core\ClevoControl.Core.csproj" />

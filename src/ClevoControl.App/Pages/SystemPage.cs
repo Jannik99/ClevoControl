@@ -23,7 +23,7 @@ public sealed class SystemPage(ControlCenter cc) : AppPage(cc)
         {
             var val = i.Value;
             if (i.Key == "Keyboard type") val = MainWindow.KeyboardTypeText(Cc.Hardware.KeyboardType);
-            else if (i.Key == "DCHU" && !Cc.Hardware.IsReal) val = Loc.T("Demo-Modus (kein Clevo-Treiber gefunden)", "Demo mode (no Clevo driver found)");
+            else if (i.Key == "Driver" && !Cc.Hardware.IsReal) val = Loc.T("Demo-Modus (kein Clevo-Treiber gefunden)", "Demo mode (no Clevo driver found)");
             var value = Ui.Text(val, 13);
             value.TextAlignment = TextAlignment.Right;
             value.MaxWidth = 560;
@@ -85,7 +85,8 @@ public sealed class SystemPage(ControlCenter cc) : AppPage(cc)
         "RAM" => Loc.T("Arbeitsspeicher", "Memory"),
         "Windows" => "Windows",
         "Keyboard type" => Loc.T("Tastaturtyp", "Keyboard type"),
-        "DCHU" => Loc.T("Clevo-Treiber", "Clevo driver"),
+        "Driver" => Loc.T("Clevo-Treiber", "Clevo driver"),
+        "Support check" => Loc.T("Unterstützung", "Support check"),
         "ClevoControl" => Loc.T("App-Version", "App version"),
         _ => key,
     };

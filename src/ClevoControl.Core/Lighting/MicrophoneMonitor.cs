@@ -12,6 +12,8 @@ public static class MicrophoneMonitor
 
     public static bool IsMicrophoneInUse()
     {
+        if (OperatingSystem.IsLinux()) return Platform.LinuxAudio.IsMicrophoneInUse();
+        if (!OperatingSystem.IsWindows()) return false;
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(Root);

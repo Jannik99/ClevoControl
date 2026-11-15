@@ -1,33 +1,21 @@
-using ClevoControl.Core.Native;
+using ClevoControl.Core.Platform;
 using ClevoControl.Core.Settings;
 
 namespace ClevoControl.Core.Lighting;
 
 /// <summary>
 /// Reads a small screen area (e.g. a health bar). Works with any game that runs in
-/// borderless/windowed mode or exclusive fullscreen that Windows can still capture.
+/// borderless/windowed mode (or exclusive fullscreen the OS can still capture).
+/// Windows: GDI; Linux: X11 or grim.
 /// </summary>
-public sealed unsafe class RegionSampler : IDisposable
+public sealed class RegionSampler : IDisposable
 {
     private const int MaxW = 160, MaxH = 24;
-    private readonly IntPtr _memDc, _bitmap, _oldBitmap;
-    private readonly uint* _pixels;
+    private readonly IScreenGrabber? _grabber = ScreenGrabber.Create();
+    private readonly uint[] _pixels = new uint[MaxW * MaxH];
+    private int _w = 1;
 
-    public RegionSampler()
-    {
-        var screen = Win32.GetDC(IntPtr.Zero);
-        _memDc = Win32.CreateCompatibleDC(screen);
-        Win32.ReleaseDC(IntPtr.Zero, screen);
-        var bmi = new Win32.BITMAPINFOHEADER
-        {
-            biSize = (uint)sizeof(Win32.BITMAPINFOHEADER), biWidth = MaxW, biHeight = -MaxH, biPlanes = 1, biBitCount = 32,
-        };
-        _bitmap = Win32.CreateDIBSection(_memDc, bmi, 0, out var bits, IntPtr.Zero, 0);
-        _pixels = (uint*)bits;
-        _oldBitmap = Win32.SelectObject(_memDc, _bitmap);
-        Win32.SetStretchBltMode(_memDc, Win32.HALFTONE);
-        Win32.SetBrushOrgEx(_memDc, 0, 0, IntPtr.Zero);
-    }
+    public bool Available => _grabber is not null;
 
     private bool Grab(MonitorInfo m, ScreenRegionSettings r, out int w, out int h)
     {
@@ -37,14 +25,13 @@ public sealed unsafe class RegionSampler : IDisposable
         var sh = Math.Max(1, (int)Math.Round(r.Height * m.Height));
         w = Math.Clamp(sw, 1, MaxW);
         h = Math.Clamp(sh, 1, MaxH);
-        var screen = Win32.GetDC(IntPtr.Zero);
-        try { return Win32.StretchBlt(_memDc, 0, 0, w, h, screen, sx, sy, sw, sh, Win32.SRCCOPY); }
-        finally { Win32.ReleaseDC(IntPtr.Zero, screen); }
+        _w = w;
+        return _grabber is not null && _grabber.Grab(sx, sy, sw, sh, w, h, _pixels);
     }
 
     private RgbColor Pixel(int x, int y)
     {
-        var p = _pixels[y * MaxW + x];
+        var p = _pixels[y * _w + x];
         return new RgbColor((byte)(p >> 16), (byte)(p >> 8), (byte)p);
     }
 
@@ -113,10 +100,5 @@ public sealed unsafe class RegionSampler : IDisposable
         return Math.Sqrt(dr * dr + dg * dg + db * db) / 441.7;
     }
 
-    public void Dispose()
-    {
-        Win32.SelectObject(_memDc, _oldBitmap);
-        Win32.DeleteObject(_bitmap);
-        Win32.DeleteDC(_memDc);
-    }
+    public void Dispose() => _grabber?.Dispose();
 }

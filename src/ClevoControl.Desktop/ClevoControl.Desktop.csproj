@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Cross-platform desktop app (Avalonia). Primary UI on Linux; also runs on Windows
+    (the Windows release keeps using the WPF app in ClevoControl.App for now).
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <RuntimeIdentifier></RuntimeIdentifier>
+    <AssemblyName>clevocontrol</AssemblyName>
+    <RootNamespace>ClevoControl.Desktop</RootNamespace>
+    <ApplicationIcon>..\ClevoControl.App\Assets\app.ico</ApplicationIcon>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.3" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.3" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.3" />
+    <PackageReference Include="Material.Icons.Avalonia" Version="2.4.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ClevoControl.Core\ClevoControl.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+</Project>
