@@ -60,7 +60,7 @@ public sealed class LinuxKeyboard : IDisposable
     {
         var list = new List<string>();
         if (devices is null) return list;
-        foreach (var block in devices.Split("\n\n", StringSplitOptions.RemoveEmptyEntries))
+        foreach (var block in devices.Replace("\r\n", "\n").Split("\n\n", StringSplitOptions.RemoveEmptyEntries))
         {
             string? handlers = null, ev = null;
             foreach (var line in block.Split('\n'))
