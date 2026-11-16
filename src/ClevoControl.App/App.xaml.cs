@@ -52,6 +52,8 @@ public partial class App : Application
         var hw = HardwareFactory.Create(simulate);
         Log.Info($"Start ClevoControl {typeof(App).Assembly.GetName().Version} – {hw.Description}, keyboard {hw.KeyboardType}");
         _cc = new ControlCenter(hw, store);
+        // Keep the autostart on this exe (a new version elsewhere must not keep starting an old one).
+        if (!isScreenshotRun && !simulate) System.Threading.Tasks.Task.Run(() => ClevoControl.Core.Services.Autostart.EnsureCurrent(Environment.ProcessPath));
         _cc.AutoProfiles.Invoke = a => Dispatcher.BeginInvoke(a);
 
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>

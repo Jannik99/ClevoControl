@@ -21,7 +21,7 @@ Run either the app *or* the service – the app stops the service automatically 
 
 | Feature | Linux | Notes |
 |---|---|---|
-| Keyboard color, brightness, on/off | ✅ | 1-zone, 3-zone and white keyboards. Per-key RGB is not supported (same as on Windows). |
+| Keyboard color, brightness, on/off | ✅ | 1-zone, 3-zone and white keyboards; per-key RGB (ITE 8291 / 829x via tuxedo-drivers) is experimental and only offered when the per-key LEDs are found. |
 | Software lighting effects | ✅ | Static, breathing, rainbow, gradient, candle, fire, temperature, battery, Pomodoro, daylight … |
 | Hardware keyboard effects (EC animations) | ❌ | Not exposed by the Linux driver – use the software effects. |
 | Fan modes (auto / max), custom fan curve with safety net | ✅ | Same safety net as on Windows. |

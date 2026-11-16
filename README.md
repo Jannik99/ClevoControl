@@ -35,10 +35,11 @@
 | **Games** | Health/mana bar read from the screen for *any* game (no injection, anti-cheat safe), native Counter-Strike 2 Game State Integration (health, flash, fire, bomb) |
 | **Other RGB software** | Built-in **OpenRGB SDK server** → Artemis, Aurora and other OpenRGB clients (and their game plugins) can drive the keyboard |
 | **Fans** | Live RPM/duty/temperatures, auto / max / **custom fan curve** with a hard-coded safety net, fans remembered **per performance profile**, “fans full” hotkey |
+| **Per-key RGB** | On keyboards with a per-key controller (detected automatically, experimental): paint every key, per-key rainbow and gradient waves |
 | **Monitor** | Detailed graphs: load and clock **per CPU core**, NVIDIA GPU load, VRAM, clocks, power draw (NVML), temperature and fan history |
 | **Cooling modes** | Turbo off / CPU limit through the Windows power plan – lowers temperatures **without any driver**, even when the BIOS locks undervolting; overheat notification |
 | **Key mapping** | FlexiKey replacement with a clickable keyboard in your real layout (QWERTZ, QWERTY, AZERTY …, detected automatically): map keys to shortcuts, text or programs, or disable them |
-| **System** | Model, BIOS, EC firmware, drivers – copied for bug reports with one click; overview of Clevo background software |
+| **System** | Model, BIOS, EC firmware, drivers – copied for bug reports with one click; overview of Clevo background software, and switching off its autostart in *Settings* |
 | **Battery** | Health, capacity, cycles; **FlexiCharger** charge limit on models that expose it to software (experimental) |
 | **Performance** | Clevo profiles (Quiet, Power saving, Performance, Entertainment), Windows power mode, automatic AC/battery switching, lower refresh rate on battery |
 | **More** | Volume (in quick settings) / mute / mic mute / output device, Windows-key lock, scenes with hotkeys (Ctrl+Alt+Shift+1…9, opt-in), tray menu, autostart, light & dark mode, German & English |
@@ -108,11 +109,11 @@ Reports are very welcome. Sources: [notebookcheck](https://www.notebookcheck.net
 |---|---|---|
 | XMG Pro 15 (2019) / XMG Pro 17 (2019) | PB51RF-G / PB71RD-G | |
 | XMG Pro 15 (2021, Late 2021) / XMG Pro 17 (2021/22) | PC50DS, PC50HS-D / PC70HS | |
-| XMG Pro 15 E23 | PD50SND-G | keyboard may be per-key RGB (see below) |
+| XMG Pro 15 E23 | PD50SND-G | keyboard may be per-key RGB (experimental, see below) |
 | XMG Focus 15 / 17 (2021) | NP50HK / NP70HK | |
 | XMG Apex 15 (2020), Eurocom Nightsky ARX15 | NH57AF1 | |
-| XMG Ultra 17 (2020), Sager NP9670, Origin EON17-X | X170SM-G | keyboard may be per-key RGB |
-| XMG Ultra 17 E21, Sager NP9672M, Origin EON-X | X170KM-G | per-key RGB: fans and profiles only |
+| XMG Ultra 17 (2020), Sager NP9670, Origin EON17-X | X170SM-G | keyboard may be per-key RGB (experimental) |
+| XMG Ultra 17 E21, Sager NP9672M, Origin EON-X | X170KM-G | per-key RGB (experimental) |
 | Nexoc GH7 | NH77DCQ | |
 | TUXEDO Aura 14/15 Gen3 | NL45PU2 / NL57PU, NL45AU2 / NL57AU | |
 | TUXEDO XP14 | NV4XMB, NV4XME, NV4XMZ | |
@@ -131,8 +132,9 @@ Reports are very welcome. Sources: [notebookcheck](https://www.notebookcheck.net
 
 ### Known limits
 
-* **Per-key RGB keyboards** (ITE USB controller, e.g. X170KM-G): keyboard lighting is not supported yet; fans, profiles and sensors are.
-  `clevoctl detect` shows whether your keyboard is one of them.
+* **Per-key RGB keyboards** (ITE 8291 / 829x USB controller, e.g. X170KM-G) are **experimental**: the app detects the controller and then offers a *Per key* effect
+  where you paint each key, plus per-key rainbow and gradient waves. This is built from the tuxedo-drivers and OpenRGB sources
+  but has not been tested on real per-key hardware yet – please report how it works. Without a detected controller nothing changes.
 * **3-zone keyboards** get one color for all zones in the app (the `clevoctl color <hex> <zone>` command can set zones).
 * **Linux on newer CPUs:** the current upstream tuxedo-drivers refuse to load on laptops that are not sold by TUXEDO
   if the CPU is newer than Intel 12th gen (Alder Lake) or a newer Ryzen generation. Such Clevo laptops need a

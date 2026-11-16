@@ -70,6 +70,8 @@ public partial class App : Application
         var hw = HardwareFactory.Create(simulate);
         Log.Info($"Start ClevoControl (desktop) {typeof(App).Assembly.GetName().Version} – {hw.Description}, keyboard {hw.KeyboardType}");
         _cc = new ControlCenter(hw, store);
+        // Keep the autostart on this exe (a new version elsewhere must not keep starting an old one).
+        if (!simulate) Task.Run(() => ClevoControl.Core.Services.Autostart.EnsureCurrent(Environment.ProcessPath));
         _cc.AutoProfiles.Invoke = a => Dispatcher.UIThread.Post(a);
         _cc.HotkeyHandled += msg => Notify("ClevoControl", msg);
         // Hotkeys switch on/off live (Linux: evdev reader in ControlCenter). Say so when key presses cannot be read.

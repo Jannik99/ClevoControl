@@ -31,6 +31,8 @@ public enum LightingEffectKind
     Police,
     Hardware,
     Off,
+    /// <summary>Every key in its own color (<see cref="KeyboardSettings.PerKeyColors"/>); only offered on per-key keyboards.</summary>
+    PerKey,
 }
 
 public enum HealthDisplay
@@ -107,6 +109,12 @@ public sealed class KeyboardSettings
     /// <summary>Effect speed multiplier (0.1 .. 5).</summary>
     public double Speed { get; set; } = 1.0;
     public HardwareEffect HardwareEffect { get; set; } = HardwareEffect.Wave;
+
+    /// <summary>
+    /// Colors of the "per key" effect by key id (PC scan code, see <see cref="Platform.KeyIds"/>), so they do not depend on the
+    /// keyboard layout. Keys without an entry stay dark.
+    /// </summary>
+    public Dictionary<int, RgbColor> PerKeyColors { get; set; } = [];
 
     // Ambient light
     public int AmbientMonitor { get; set; } = 0;

@@ -1,3 +1,4 @@
+using ClevoControl.Core.Hardware.PerKey;
 using System.Globalization;
 using ClevoControl.Core.Platform;
 
@@ -43,13 +44,33 @@ public sealed class LinuxClevoHardware : IClevoHardware, IDisposable
         _whiteLed = names.Where(n => n.StartsWith("white:kbd_backlight", StringComparison.Ordinal)).Select(n => Path.Combine(leds, n)).FirstOrDefault();
         _whiteMax = _whiteLed is null ? 0 : ReadInt(Path.Combine(_whiteLed, "max_brightness")) ?? 2;
 
-        KeyboardType = _rgbLeds.Count switch
+        // Per-key keyboards (tuxedo-drivers ite_8291 / ite_829x) also register their 120/126 LEDs as rgb:kbd_backlight*.
+        try
         {
-            >= 3 => KeyboardType.ThreeZoneRgb,
-            >= 1 => KeyboardType.SingleZoneRgb,
-            _ => _whiteLed is not null ? KeyboardType.WhiteOnly : KeyboardType.None,
-        };
+            _perKey = LinuxSysfsPerKey.TryCreate(_rgbLeds);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Per-key: sysfs detection failed: " + ex.Message);
+        }
+        if (_perKey is not null) _rgbLeds = _rgbLeds.Except(_perKey.Leds).ToList();
+        KeyboardType = ClassifyKeyboard(_rgbLeds.Count, _whiteLed is not null, _perKey is not null);
     }
+
+    /// <summary>
+    /// Keyboard type from what the drivers expose: a detected per-key controller, exactly 3 RGB LEDs (clevo_leds 3-zone),
+    /// otherwise 1 zone (also for the 4 zones of an ITE 8291 ce00 rev 0002, which are all set to the same color).
+    /// </summary>
+    internal static KeyboardType ClassifyKeyboard(int rgbLeds, bool white, bool perKey) => perKey ? KeyboardType.PerKeyRgb : rgbLeds switch
+    {
+        3 => KeyboardType.ThreeZoneRgb,
+        >= 1 => KeyboardType.SingleZoneRgb,
+        _ => white ? KeyboardType.WhiteOnly : KeyboardType.None,
+    };
+
+    private readonly LinuxSysfsPerKey? _perKey;
+
+    public IPerKeyKeyboard? PerKey => _perKey;
 
     public bool IsReal => true;
 
@@ -109,6 +130,12 @@ public sealed class LinuxClevoHardware : IClevoHardware, IDisposable
 
     public void SetKeyboardColor(RgbColor color)
     {
+        _perKey?.SetAll(color);
+        SetZones(color);
+    }
+
+    private void SetZones(RgbColor color)
+    {
         if (_rgbLeds.Count == 0) return;
         for (var z = 0; z < _rgbLeds.Count; z++) SetKeyboardZoneColor(z, color);
     }
@@ -117,7 +144,8 @@ public sealed class LinuxClevoHardware : IClevoHardware, IDisposable
     {
         if (_rgbLeds.Count == 0) return;
         var led = _rgbLeds[Math.Clamp(zone, 0, _rgbLeds.Count - 1)];
-        if (KeyboardType == KeyboardType.SingleZoneRgb) c = CompensateDriverGain(c);
+        // Only clevo_leds (1 or 2 LEDs) scales the channels; other drivers with more zones do not.
+        if (KeyboardType == KeyboardType.SingleZoneRgb && _rgbLeds.Count < 3) c = CompensateDriverGain(c);
         Write(Path.Combine(led, "multi_intensity"), FormatIntensity(ReadIndex(led), c));
     }
 
@@ -143,12 +171,14 @@ public sealed class LinuxClevoHardware : IClevoHardware, IDisposable
     public void SetKeyboardBrightness(byte level)
     {
         _brightness = level;
+        _perKey?.SetBrightness(level);
         if (_on) WriteBrightness(level);
     }
 
     public void SetKeyboardPower(bool on)
     {
         _on = on;
+        _perKey?.SetPower(on);
         WriteBrightness(on ? _brightness : (byte)0);
     }
 

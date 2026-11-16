@@ -1,3 +1,5 @@
+using ClevoControl.Core.Hardware.PerKey;
+
 namespace ClevoControl.Core.Hardware;
 
 /// <summary>
@@ -25,8 +27,34 @@ public sealed class ClevoHardware : IClevoHardware
     public ClevoHardware(DchuNative dchu)
     {
         _dchu = dchu;
-        KeyboardType = DetectKeyboardType();
+        var ecType = DetectKeyboardType();
+        // Per-key colors need the keyboard's own ITE USB controller; the EC only knows the keyboard type.
+        // Strict: per-key only when that controller was found (see WindowsHidPerKey.Classify).
+        try
+        {
+            _perKey = WindowsHidPerKey.TryOpen();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Per-key: HID detection failed: " + ex.Message);
+        }
+        if (_perKey is not null)
+        {
+            Log.Info($"Per-key keyboard: {_perKey.Description} (EC keyboard type {ecType})");
+            KeyboardType = KeyboardType.PerKeyRgb;
+        }
+        else
+        {
+            if (ecType == KeyboardType.PerKeyRgb)
+                Log.Info("EC reports a per-key keyboard, but no supported per-key controller was found – driving it as one zone.");
+            // Without the controller it can only be driven like a one-zone keyboard (zone 0), as before.
+            KeyboardType = ecType == KeyboardType.PerKeyRgb ? KeyboardType.SingleZoneRgb : ecType;
+        }
     }
+
+    private readonly WindowsHidPerKey? _perKey;
+
+    public IPerKeyKeyboard? PerKey => _perKey;
 
     public bool IsReal => true;
 
@@ -71,8 +99,16 @@ public sealed class ClevoHardware : IClevoHardware
         return (cpu, gpu, gpu2);
     }
 
+    private RgbColor _lastColor = RgbColor.White;
+
     public void SetKeyboardColor(RgbColor color)
     {
+        _lastColor = color;
+        if (_perKey is not null)
+        {
+            _perKey.SetAll(color);
+            return;
+        }
         switch (KeyboardType)
         {
             case KeyboardType.ThreeZoneRgb:
@@ -86,18 +122,36 @@ public sealed class ClevoHardware : IClevoHardware
 
     public void SetKeyboardZoneColor(int zone, RgbColor c)
     {
+        if (_perKey is not null)
+        {
+            _perKey.SetAll(c);
+            return;
+        }
         zone = Math.Clamp(zone, 0, 3);
         // Payload byte order is B, R, G (from most to least significant).
         var arg = KbZoneBase | ((uint)zone << 24) | ((uint)c.B << 16) | ((uint)c.R << 8) | c.G;
         _dchu.Set(CmdKeyboardRgb, arg);
     }
 
-    public void SetKeyboardBrightness(byte level) => _dchu.Set(CmdKeyboardRgb, KbBrightness | level);
+    public void SetKeyboardBrightness(byte level)
+    {
+        if (_perKey is not null) _perKey.SetBrightness(level);
+        else _dchu.Set(CmdKeyboardRgb, KbBrightness | level);
+    }
 
-    public void SetKeyboardPower(bool on) => _dchu.Set(CmdKeyboardRgb, on ? KbOn : KbOff);
+    public void SetKeyboardPower(bool on)
+    {
+        if (_perKey is not null) _perKey.SetPower(on);
+        else _dchu.Set(CmdKeyboardRgb, on ? KbOn : KbOff);
+    }
 
     public void SetKeyboardHardwareEffect(HardwareEffect effect)
     {
+        if (_perKey is not null)
+        {
+            _perKey.SetHardwareEffect(effect, _lastColor);
+            return;
+        }
         uint arg = effect switch
         {
             HardwareEffect.Breathe => 0x1002A000,

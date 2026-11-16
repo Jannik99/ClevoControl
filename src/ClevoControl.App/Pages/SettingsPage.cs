@@ -46,7 +46,101 @@ public sealed class SettingsPage(ControlCenter cc) : AppPage(cc)
                 Application.Current.Dispatcher.BeginInvoke(AskRestart);
             }, 160)));
         root.Children.Add(Ui.Card(s, Loc.T("Allgemein", "General"), icon: Icons.Settings));
+        root.Children.Add(VendorCard());
         return root;
+    }
+
+    // ------------------------------------------------------------------ vendor software at startup
+
+    /// <summary>
+    /// Card with the autostart entries of Clevo's own software (found by <see cref="VendorAutostart"/>), each
+    /// with a toggle. Discovery and switching run off the UI thread; a failed or cancelled switch flips back.
+    /// </summary>
+    private static UIElement VendorCard()
+    {
+        VendorAutostart.Text = Loc.T;
+        var body = new StackPanel();
+        body.Children.Add(Ui.Text(Loc.T("Suche Autostart-Einträge …", "Looking for startup entries …"), 13, sub: true));
+        var card = Ui.Card(body, Loc.T("Andere Hersteller-Software beim Start", "Vendor software at startup"),
+            Loc.T("Verhindert, dass Clevos eigene Programme beim Anmelden starten und Lüfter oder Licht überschreiben. Jederzeit wieder einschaltbar.",
+                "Keeps Clevo's own programs from starting at sign-in and overriding fans or light. You can turn them back on at any time."),
+            icon: Icons.Power);
+        Task.Run(() =>
+        {
+            IReadOnlyList<VendorStartupItem> items;
+            IReadOnlyList<string> running;
+            try { items = VendorAutostart.Discover(); }
+            catch (Exception ex) { Log.Error("VendorAutostart", ex); items = []; }
+            try { running = VendorAutostart.RunningControlApps(); }
+            catch { running = []; }
+            Application.Current?.Dispatcher.BeginInvoke(() => FillVendorCard(body, items, running));
+        });
+        return card;
+    }
+
+    private static void FillVendorCard(StackPanel body, IReadOnlyList<VendorStartupItem> items, IReadOnlyList<string> running)
+    {
+        body.Children.Clear();
+        if (items.Count == 0)
+            body.Children.Add(Ui.Text(Loc.T("Keine Autostart-Einträge von Clevo- oder TUXEDO-Software gefunden.",
+                "No startup entries of Clevo or TUXEDO software found."), 13, sub: true, bottom: running.Count > 0 ? 12 : 0));
+        foreach (var item in items) body.Children.Add(VendorRow(item));
+        if (running.Count > 0)
+        {
+            Button? quit = null;
+            quit = Ui.Button(Loc.T("Clevo Control Center jetzt beenden", "Quit Clevo Control Center now"), () =>
+            {
+                if (MessageBox.Show(Loc.T("Clevo Control Center und die LED-Tastatur-App jetzt beenden? Ungespeicherte Einstellungen darin gehen verloren.",
+                            "Quit Clevo Control Center and the LED keyboard app now? Unsaved settings in them are lost."),
+                        "ClevoControl", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+                VendorAutostart.QuitControlApps();
+                quit!.Visibility = Visibility.Collapsed;
+            }, icon: Icons.Delete);
+            quit.HorizontalAlignment = HorizontalAlignment.Left;
+            quit.Margin = new Thickness(0, 4, 0, 0);
+            body.Children.Add(quit);
+        }
+        Ui.TrimBottom(body.Children.Count > 0 ? body.Children[^1] : null);
+    }
+
+    private static UIElement VendorRow(VendorStartupItem item)
+    {
+        var box = new StackPanel { Margin = new Thickness(0, 0, 0, 14) };
+        var status = Ui.Text("", 12, sub: true);
+        status.Visibility = Visibility.Collapsed;
+        var current = item.Enabled;
+        var reverting = false;
+        CheckBox? toggle = null;
+        toggle = Ui.Toggle(item.Enabled, v =>
+        {
+            if (reverting || v == current) return;
+            toggle!.IsEnabled = false;
+            status.Visibility = Visibility.Collapsed;
+            Task.Run(() =>
+            {
+                var ok = VendorAutostart.SetEnabled(item, v, out var error);
+                Application.Current?.Dispatcher.BeginInvoke(() =>
+                {
+                    toggle.IsEnabled = true;
+                    if (ok) { current = v; Log.Info($"Vendor autostart {item.Id} → {(v ? "on" : "off")}"); return; }
+                    reverting = true;
+                    toggle.IsChecked = current;
+                    reverting = false;
+                    status.Text = Loc.T("Nicht geändert: ", "Not changed: ") + (error ?? "?");
+                    status.Visibility = Visibility.Visible;
+                });
+            });
+        });
+        box.Children.Add(Ui.Row(item.Name, toggle, item.Description + "\n" + VendorAutostart.KindLabel(item), bottom: 0));
+        if (item.Warning is { } w)
+        {
+            var warn = Ui.Text(w, 12);
+            warn.SetResourceReference(TextBlock.ForegroundProperty, "SystemFillColorCautionBrush");
+            warn.Margin = new Thickness(0, 4, 0, 0);
+            box.Children.Add(warn);
+        }
+        box.Children.Add(status);
+        return box;
     }
 
     private static void AskRestart()

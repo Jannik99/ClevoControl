@@ -151,7 +151,7 @@ public sealed class MainWindow : Window
     {
         KeyboardType.SingleZoneRgb => Loc.T("RGB, 1 Zone", "RGB, 1 zone"),
         KeyboardType.ThreeZoneRgb => Loc.T("RGB, 3 Zonen", "RGB, 3 zones"),
-        KeyboardType.PerKeyRgb => Loc.T("RGB pro Taste (nur als 1 Farbe)", "Per-key RGB (single color only)"),
+        KeyboardType.PerKeyRgb => Loc.T("RGB pro Taste", "per-key RGB"),
         KeyboardType.WhiteOnly => Loc.T("nur weiß", "white only"),
         KeyboardType.None => Loc.T("keine Beleuchtung", "no backlight"),
         _ => Loc.T("unbekannt", "unknown"),

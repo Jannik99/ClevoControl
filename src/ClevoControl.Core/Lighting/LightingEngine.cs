@@ -46,6 +46,7 @@ public sealed class LightingEngine : IDisposable
     private bool? _lastPower;
     private LightingEffectKind? _lastEffect;
     private HardwareEffect? _lastHwEffect;
+    private Dictionary<int, RgbColor>? _lastFrame;
 
     private (double R, double G, double B) _smooth;
     private double _candle = 1, _candleTarget = 1;
@@ -145,6 +146,8 @@ public sealed class LightingEngine : IDisposable
                 {
                     _invalidate = false;
                     _lastSent = null; _lastBrightness = null; _lastPower = null; _lastEffect = null; _lastHwEffect = null;
+                    _lastFrame = null;
+                    _hw.PerKey?.Invalidate();
                 }
 
                 var t = sw.Elapsed.TotalSeconds;
@@ -162,6 +165,7 @@ public sealed class LightingEngine : IDisposable
                     _lastSent = null;
                     _lastBrightness = null;
                     _lastHwEffect = null;
+                    _lastFrame = null;
                     KeyboardIsOn = on;
                     if (!on) ColorChanged?.Invoke(RgbColor.Black);
                 }
@@ -183,6 +187,7 @@ public sealed class LightingEngine : IDisposable
                             _hw.SetKeyboardHardwareEffect(s.HardwareEffect);
                             _lastHwEffect = s.HardwareEffect;
                             _lastSent = null;
+                            _lastFrame = null;
                             CurrentColor = s.Color;
                             ColorChanged?.Invoke(s.Color);
                         }
@@ -192,9 +197,17 @@ public sealed class LightingEngine : IDisposable
                     {
                         _lastHwEffect = null;
                         RgbColor color;
-                        if (overrideActive) { color = _overrideColor!.Value; frameMs = 50; }
-                        else (color, frameMs) = Render(effect, s, t);
-                        Send(color, s);
+                        if (overrideActive) { color = _overrideColor!.Value; frameMs = 50; Send(color, s); }
+                        else if (_hw.PerKey is { } perKey && RenderKeys(effect, s, t) is { } keys)
+                        {
+                            SendKeys(perKey, keys.Colors, s);
+                            frameMs = keys.FrameMs;
+                        }
+                        else
+                        {
+                            (color, frameMs) = Render(effect, s, t);
+                            Send(color, s);
+                        }
                     }
                 }
                 _lastEffect = effect;
@@ -219,8 +232,83 @@ public sealed class LightingEngine : IDisposable
         if (_lastSent == corrected) return;
         _hw.SetKeyboardColor(corrected);
         _lastSent = corrected;
+        _lastFrame = null;
         CurrentColor = color;
         ColorChanged?.Invoke(color);
+    }
+
+    // ---- per-key keyboards ---------------------------------------------------------------------
+
+    private Platform.KeyboardLayout? _positionsLayout;
+    private IReadOnlyDictionary<int, (double X, double Y)> _positions = new Dictionary<int, (double X, double Y)>();
+
+    /// <summary>Key centres (0..1) of the current layout, for effects that move across the keyboard.</summary>
+    private IReadOnlyDictionary<int, (double X, double Y)> KeyPositions()
+    {
+        var layout = Platform.KeyboardLayout.Current;
+        if (!ReferenceEquals(layout, _positionsLayout))
+        {
+            _positions = Platform.KeyboardGeometry.NormalizedCenters(Platform.KeyboardGeometry.Build(layout, numpad: true));
+            _positionsLayout = layout;
+        }
+        return _positions;
+    }
+
+    /// <summary>
+    /// Per-key frame for effects that differ between keys: the painted keys, and rainbow / gradient as waves from left to right.
+    /// Null for all other effects – they show one color on every key (sent with SetKeyboardColor, which lights the whole matrix).
+    /// </summary>
+    internal (Dictionary<int, RgbColor> Colors, int FrameMs)? RenderKeys(LightingEffectKind effect, KeyboardSettings s, double t)
+    {
+        var speed = Math.Clamp(s.Speed, 0.1, 5);
+        switch (effect)
+        {
+            case LightingEffectKind.PerKey:
+                return (new Dictionary<int, RgbColor>(s.PerKeyColors), 500);
+
+            case LightingEffectKind.Spectrum:
+            {
+                // Same hue speed as the one-color rainbow, spread over two thirds of the color wheel across the keyboard.
+                var frame = new Dictionary<int, RgbColor>();
+                foreach (var (id, (x, _)) in KeyPositions()) frame[id] = RgbColor.FromHsv(t * 24 * speed - x * 240, 1, 1);
+                return (frame, 40);
+            }
+
+            case LightingEffectKind.Gradient:
+            {
+                var frame = new Dictionary<int, RgbColor>();
+                foreach (var (id, (x, _)) in KeyPositions())
+                {
+                    var phase = (Math.Sin(t * speed * Math.PI * 0.4 - x * Math.PI) + 1) / 2;
+                    frame[id] = RgbColor.Lerp(s.Color, s.SecondaryColor, phase);
+                }
+                return (frame, 40);
+            }
+
+            default:
+                return null;
+        }
+    }
+
+    private void SendKeys(Hardware.PerKey.IPerKeyKeyboard keyboard, Dictionary<int, RgbColor> colors, KeyboardSettings s)
+    {
+        var corrected = new Dictionary<int, RgbColor>(colors.Count);
+        foreach (var (id, c) in colors) corrected[id] = Correct(c, s);
+        if (_lastFrame is not null && _lastFrame.Count == corrected.Count && corrected.All(kv => _lastFrame.TryGetValue(kv.Key, out var o) && o == kv.Value))
+            return;
+        keyboard.SetKeyColors(corrected);
+        _lastFrame = corrected;
+        _lastSent = null;
+        var shown = colors.Count == 0 ? RgbColor.Black : Average(colors.Values);
+        CurrentColor = shown;
+        ColorChanged?.Invoke(shown);
+    }
+
+    private static RgbColor Average(IEnumerable<RgbColor> colors)
+    {
+        long r = 0, g = 0, b = 0, n = 0;
+        foreach (var c in colors) { r += c.R; g += c.G; b += c.B; n++; }
+        return n == 0 ? RgbColor.Black : new RgbColor((byte)(r / n), (byte)(g / n), (byte)(b / n));
     }
 
     private static RgbColor Correct(RgbColor c, KeyboardSettings s)

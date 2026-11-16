@@ -1,3 +1,5 @@
+using ClevoControl.Core.Hardware.PerKey;
+
 namespace ClevoControl.Core.Hardware;
 
 /// <summary>Everything the app needs from the laptop's embedded controller.</summary>
@@ -9,6 +11,12 @@ public interface IClevoHardware
     string Description { get; }
 
     KeyboardType KeyboardType { get; }
+
+    /// <summary>
+    /// The per-key controller, only when one was really detected (then <see cref="KeyboardType"/> is
+    /// <see cref="KeyboardType.PerKeyRgb"/>). The keyboard calls below then also go to it.
+    /// </summary>
+    IPerKeyKeyboard? PerKey => null;
 
     /// <summary>Reads fan speed, duty cycle and temperature of CPU/GPU from the EC.</summary>
     (FanReading Cpu, FanReading Gpu, FanReading? Gpu2) ReadFans();

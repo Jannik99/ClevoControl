@@ -13,6 +13,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
 {
     private KeyboardSettings Kb => Cc.Settings.Keyboard;
     private ContentControl? _options, _color;
+    private readonly Dictionary<LightingEffectKind, RadioButton> _tiles = [];
     private Border? _preview;
     private System.Windows.Media.Effects.DropShadowEffect? _glow;
     private DispatcherTimer? _timer;
@@ -41,6 +42,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
         LightingEffectKind.Police => Loc.T("Polizei", "Police"),
         LightingEffectKind.Hardware => Loc.T("Eingebaute Effekte", "Built-in effects"),
         LightingEffectKind.Off => Loc.T("Aus", "Off"),
+        LightingEffectKind.PerKey => Loc.T("Pro Taste", "Per key"),
         _ => e.ToString(),
     };
 
@@ -68,6 +70,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
         LightingEffectKind.Police => (Icons.Bell, Loc.T("Rot/Blau-Blitzer", "Red/blue strobe")),
         LightingEffectKind.Hardware => (Icons.Chip, Loc.T("Läuft auch ohne App", "Runs without the app")),
         LightingEffectKind.Off => (Icons.Power, Loc.T("Beleuchtung aus", "Light off")),
+        LightingEffectKind.PerKey => (Icons.Keyboard, Loc.T("Jede Taste eigene Farbe", "Own color per key")),
         _ => (Icons.Circle, ""),
     };
 
@@ -76,7 +79,8 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
         var root = new StackPanel();
         root.Children.Add(Ui.PageTitle(Loc.T("Beleuchtung", "Lighting")));
         root.Children.Add(Ui.PageSubtitle(Loc.T("Farbe, Helligkeit und Effekte deiner Tastaturbeleuchtung.", "Color, brightness and effects of your keyboard light.")
-            + (Cc.Hardware.KeyboardType == KeyboardType.SingleZoneRgb ? Loc.T(" Deine Tastatur hat eine Zone – alle Tasten leuchten in derselben Farbe.", " Your keyboard has one zone – all keys share one color.") : "")));
+            + (Cc.Hardware.KeyboardType == KeyboardType.SingleZoneRgb ? Loc.T(" Deine Tastatur hat eine Zone – alle Tasten leuchten in derselben Farbe.", " Your keyboard has one zone – all keys share one color.") : "")
+            + (Cc.Hardware.PerKey is not null ? Loc.T(" Deine Tastatur hat RGB pro Taste – unter „Tasten einfärben“ bekommt jede Taste ihre eigene Farbe.", " Your keyboard has per-key RGB – under “Paint keys” every key gets its own color.") : "")));
 
         // Preview
         _preview = new Border { Height = 70, CornerRadius = new CornerRadius(14), Margin = new Thickness(0, 0, 0, 18) };
@@ -104,18 +108,24 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
             {
                 var effect = e;
                 var (icon, desc) = EffectInfo(e);
-                wrap.Children.Add(Ui.Tile(icon, EffectName(e), desc, Kb.Effect == e, "effect", () =>
+                var tile = Ui.Tile(icon, EffectName(e), desc, Kb.Effect == e, "effect", () =>
                 {
                     Kb.Effect = effect;
                     Kb.Enabled = true;
                     Cc.ApplyKeyboard();
                     _options!.Content = BuildOptions();
                     _color!.Content = BuildColorCard();
-                }, 150));
+                }, 150);
+                _tiles[effect] = tile;
+                wrap.Children.Add(tile);
             }
             gallery.Children.Add(wrap);
         }
-        AddGroup(Loc.T("Grundlagen", "Basics"), LightingEffectKind.Static, LightingEffectKind.Breathing, LightingEffectKind.Spectrum, LightingEffectKind.Gradient, LightingEffectKind.Hardware);
+        // "Per key" only exists when a per-key controller was really detected.
+        var basics = new List<LightingEffectKind> { LightingEffectKind.Static };
+        if (Cc.Hardware.PerKey is not null) basics.Add(LightingEffectKind.PerKey);
+        basics.AddRange([LightingEffectKind.Breathing, LightingEffectKind.Spectrum, LightingEffectKind.Gradient, LightingEffectKind.Hardware]);
+        AddGroup(Loc.T("Grundlagen", "Basics"), [.. basics]);
         AddGroup(Loc.T("Stimmung", "Ambience"), LightingEffectKind.Candle, LightingEffectKind.Daylight, LightingEffectKind.Lava, LightingEffectKind.Fire, LightingEffectKind.Heartbeat, LightingEffectKind.Police);
         AddGroup(Loc.T("Reagiert auf …", "Reacts to …"), LightingEffectKind.Ambient, LightingEffectKind.Music, LightingEffectKind.Reactive, LightingEffectKind.Temperature, LightingEffectKind.CpuLoad, LightingEffectKind.Battery, LightingEffectKind.OnAir, LightingEffectKind.Pomodoro);
         AddGroup(Loc.T("Spiele", "Games"), LightingEffectKind.ScreenRegion, LightingEffectKind.GameCs2);
@@ -126,6 +136,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
         root.Children.Add(_options);
         _color = new ContentControl { Content = BuildColorCard() };
         root.Children.Add(_color);
+        if (Cc.Hardware.PerKey is { } perKey) root.Children.Add(BuildPerKeyCard(perKey));
         root.Children.Add(Ui.Card(Ui.Stack(
             Ui.Switch(Loc.T("Beleuchtung an", "Light on"), Kb.Enabled, on => { Kb.Enabled = on; Cc.ApplyKeyboard(); }),
             Ui.SliderRow(Loc.T("Helligkeit", "Brightness"), 0, 100, Kb.Brightness, v => { Kb.Brightness = (int)v; Cc.ApplyKeyboard(); }, v => $"{v:0} %"),
@@ -243,6 +254,51 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
             grid.Children.Add(expander);
         }
         return Ui.Card(grid, Loc.T("Farbe", "Color"), icon: Icons.Color, indent: false);
+    }
+
+    /// <summary>Per-key editor: paint keys in the color of the color card. Only built when a per-key controller was detected.</summary>
+    private Border BuildPerKeyCard(Core.Hardware.PerKey.IPerKeyKeyboard perKey)
+    {
+        var s = new StackPanel();
+        s.Children.Add(Ui.Text(Loc.T("Klicke auf Tasten oder ziehe darüber, um sie in der gewählten Farbe einzufärben. Rechte Maustaste oder Entf löscht. Nicht eingefärbte Tasten bleiben dunkel.",
+            "Click or drag over keys to paint them in the chosen color. Right mouse button or Delete erases. Keys without a color stay dark."), 12.5, sub: true, bottom: 12));
+        var keyboard = new PerKeyKeyboard(perKey.HasLed) { Margin = new Thickness(0, 0, 0, 12) };
+        keyboard.SetColors(Kb.PerKeyColors);
+        s.Children.Add(keyboard);
+
+        void Changed()
+        {
+            keyboard.SetColors(Kb.PerKeyColors);
+            // Painting switches to the "per key" effect (the tile's Checked handler applies it).
+            if (Kb.Effect != LightingEffectKind.PerKey && _tiles.TryGetValue(LightingEffectKind.PerKey, out var tile)) tile.IsChecked = true;
+            else Cc.ApplyKeyboard();
+        }
+
+        keyboard.Painted += (id, erase) =>
+        {
+            if (erase ? !Kb.PerKeyColors.Remove(id) : Kb.PerKeyColors.TryGetValue(id, out var old) && old == Kb.Color) return;
+            if (!erase) Kb.PerKeyColors[id] = Kb.Color;
+            Changed();
+        };
+        s.Children.Add(Ui.Wrap(
+            Ui.Button(Loc.T("Alle", "All"), () =>
+            {
+                foreach (var id in keyboard.PaintableKeys) Kb.PerKeyColors[id] = Kb.Color;
+                Changed();
+            }, icon: Icons.Brush, tip: Loc.T("Alle Tasten in der gewählten Farbe", "All keys in the chosen color")),
+            Ui.Button(Loc.T("Zurücksetzen", "Reset"), () =>
+            {
+                if (Kb.PerKeyColors.Count == 0) return;
+                var before = new Dictionary<int, RgbColor>(Kb.PerKeyColors);
+                Kb.PerKeyColors.Clear();
+                Changed();
+                Ui.ShowUndo(s, Loc.T("Alle Tastenfarben gelöscht.", "All key colors cleared."), () =>
+                {
+                    Kb.PerKeyColors = new Dictionary<int, RgbColor>(before);
+                    Changed();
+                });
+            }, icon: Icons.Delete, tip: Loc.T("Alle Tastenfarben löschen", "Clear all key colors"))));
+        return Ui.Card(s, Loc.T("Tasten einfärben", "Paint keys"), perKey.Description, Icons.Keyboard, indent: false);
     }
 
     private UIElement BuildOptions()

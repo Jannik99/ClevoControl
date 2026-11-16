@@ -338,3 +338,37 @@ public class SleepGapTests
         Assert.Equal(t.AddMinutes(30) + LightingEngine.ResumeSettle, LightingEngine.GapHold(t, t.AddMinutes(30)));
     }
 }
+
+public class AutostartTests
+{
+    [Fact]
+    public void Task_xml_is_escaped_and_round_trips_the_exe_path()
+    {
+        var exe = @"C:\Users\A & B\Apps\ClevoControl\ClevoControl.exe";
+        var xml = Autostart.TaskXml(exe, @"PC\A & B");
+        Assert.Contains("<LogonTrigger>", xml);
+        Assert.Contains(@"<UserId>PC\A &amp; B</UserId>", xml);
+        Assert.Contains("<Arguments>--minimized</Arguments>", xml);
+        Assert.Equal(exe, Autostart.ParseTaskCommand(xml));
+        System.Xml.Linq.XDocument.Parse(xml); // well-formed
+    }
+
+    [Theory]
+    [InlineData(@"""C:\Programs\ClevoControl\ClevoControl.exe"" --minimized", @"C:\Programs\ClevoControl\ClevoControl.exe")]
+    [InlineData(@"C:\x\ClevoControl.exe --minimized", @"C:\x\ClevoControl.exe")]
+    public void Parses_run_key_commands(string command, string exe) => Assert.Equal(exe, Autostart.ParseRunCommand(command));
+
+    [Fact]
+    public void Parses_desktop_entry_exec()
+    {
+        Assert.Equal("/usr/local/bin/clevocontrol", Autostart.ParseDesktopExec(Autostart.LinuxDesktopEntry("/usr/local/bin/clevocontrol", autostart: true)));
+        Assert.Equal("/opt/cc/clevocontrol", Autostart.ParseDesktopExec("[Desktop Entry]\nExec=/opt/cc/clevocontrol --minimized\n"));
+    }
+
+    [Theory]
+    [InlineData(@"C:\Code\ClevoControl\src\ClevoControl.App\bin\x64\Debug\net9.0-windows\win-x64\ClevoControl.exe", true)]
+    [InlineData(@"C:\Users\A\AppData\Local\Programs\ClevoControl\ClevoControl.exe", false)]
+    [InlineData("/home/a/cc/src/ClevoControl.Desktop/bin/Release/net9.0/clevocontrol", true)]
+    [InlineData("/usr/local/bin/clevocontrol", false)]
+    public void Development_builds_never_take_over_the_autostart(string path, bool dev) => Assert.Equal(dev, Autostart.IsDevelopmentBuild(path));
+}

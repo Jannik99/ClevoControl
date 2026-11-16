@@ -11,3 +11,8 @@ ACTION=="add", SUBSYSTEM=="leds", KERNEL=="rgb:kbd_backlight*|white:kbd_backligh
 # Battery charge thresholds, if the battery driver offers them
 ACTION=="add", SUBSYSTEM=="power_supply", ATTR{type}=="Battery", \
   RUN+="/bin/sh -c 'cd /sys%p && chgrp clevocontrol charge_control_start_threshold charge_control_end_threshold 2>/dev/null; chmod g+w charge_control_start_threshold charge_control_end_threshold 2>/dev/null; true'"
+
+# Per-key RGB keyboards (ITE controllers, tuxedo-drivers ite_8291 / ite_829x): batched LED updates.
+# The per-key LEDs themselves are covered by the keyboard backlight rule above.
+ACTION=="add|bind", SUBSYSTEM=="hid", ATTRS{idVendor}=="048d", \
+  RUN+="/bin/sh -c 'f=/sys%p/controls/buffer_input; [ -e $$f ] && chgrp clevocontrol $$f && chmod g+w $$f; true'"

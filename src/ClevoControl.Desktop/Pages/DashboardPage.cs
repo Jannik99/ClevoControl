@@ -217,7 +217,11 @@ public sealed class DashboardPage(ControlCenter cc) : AppPage(cc)
         "Unter Linux über den keyd-Export auf der Seite „Tastenbelegung“.",
         "On Linux through the keyd export on the “Key mapping” page.");
 
-    private List<QuickTile> AllTiles()
+    /// <summary>Tiles for this operating system only (Windows-only ones are not offered on Linux at all).</summary>
+    private List<QuickTile> AllTiles() =>
+        PlatformTiles().Where(t => OperatingSystem.IsWindows() || t.Id is not ("winkey" or "keymap")).ToList();
+
+    private List<QuickTile> PlatformTiles()
     {
         var s = Cc.Settings;
         var windows = OperatingSystem.IsWindows();

@@ -1,3 +1,5 @@
+using ClevoControl.Core.Hardware.PerKey;
+
 namespace ClevoControl.Core.Hardware;
 
 /// <summary>
@@ -12,11 +14,21 @@ public sealed class SimulatedHardware : IClevoHardware
     private (byte Cpu, byte Gpu)? _duty;
     private PerformanceProfile _profile = PerformanceProfile.Entertainment;
 
-    public SimulatedHardware(string reason) => Description = $"Simulation – {reason}";
+    public SimulatedHardware(string reason)
+    {
+        Description = $"Simulation – {reason}";
+        // For UI tests: CC_SIM_KEYBOARD=perkey simulates a per-key keyboard (ITE 8291).
+        if (string.Equals(Environment.GetEnvironmentVariable("CC_SIM_KEYBOARD"), "perkey", StringComparison.OrdinalIgnoreCase))
+            SimulatedPerKey = new SimulatedPerKey();
+    }
 
     public bool IsReal => false;
     public string Description { get; }
-    public KeyboardType KeyboardType => KeyboardType.SingleZoneRgb;
+    public KeyboardType KeyboardType => SimulatedPerKey is null ? KeyboardType.SingleZoneRgb : KeyboardType.PerKeyRgb;
+
+    public SimulatedPerKey? SimulatedPerKey { get; init; }
+
+    public IPerKeyKeyboard? PerKey => SimulatedPerKey;
 
     public RgbColor LastColor { get; private set; } = RgbColor.White;
     public byte LastBrightness { get; private set; } = 255;
@@ -37,11 +49,27 @@ public sealed class SimulatedHardware : IClevoHardware
         return (new FanReading(cd * 52, cd, (int)_cpuTemp), new FanReading(gd * 50, gd, (int)_gpuTemp), null);
     }
 
-    public void SetKeyboardColor(RgbColor color) => LastColor = color;
-    public void SetKeyboardZoneColor(int zone, RgbColor color) => LastColor = color;
-    public void SetKeyboardBrightness(byte level) => LastBrightness = level;
-    public void SetKeyboardPower(bool on) => KeyboardOn = on;
-    public void SetKeyboardHardwareEffect(HardwareEffect effect) { }
+    public void SetKeyboardColor(RgbColor color)
+    {
+        LastColor = color;
+        SimulatedPerKey?.SetAll(color);
+    }
+
+    public void SetKeyboardZoneColor(int zone, RgbColor color) => SetKeyboardColor(color);
+
+    public void SetKeyboardBrightness(byte level)
+    {
+        LastBrightness = level;
+        SimulatedPerKey?.SetBrightness(level);
+    }
+
+    public void SetKeyboardPower(bool on)
+    {
+        KeyboardOn = on;
+        SimulatedPerKey?.SetPower(on);
+    }
+
+    public void SetKeyboardHardwareEffect(HardwareEffect effect) => SimulatedPerKey?.SetHardwareEffect(effect, LastColor);
 
     public void SetFanMode(FanMode mode)
     {

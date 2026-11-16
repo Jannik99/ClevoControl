@@ -69,8 +69,11 @@ public sealed class ScenesPage(ControlCenter cc) : AppPage(cc)
     {
         var root = new StackPanel();
         root.Children.Add(Ui.PageTitle(Loc.T("Szenen", "Scenes")));
-        root.Children.Add(Ui.PageSubtitle(Loc.T("Speichere Licht, Lüfter, Leistung und Lautstärke als Szene und wechsle per Klick oder über das Symbol im Infobereich.",
-            "Save light, fans, performance and volume as a scene and switch with one click or from the tray icon.")));
+        root.Children.Add(Ui.PageSubtitle(OperatingSystem.IsWindows()
+            ? Loc.T("Speichere Licht, Lüfter, Leistung und Lautstärke als Szene und wechsle per Klick oder über das Symbol im Infobereich.",
+                "Save light, fans, performance and volume as a scene and switch with one click or from the tray icon.")
+            : Loc.T("Speichere Licht, Lüfter, Leistung und Lautstärke als Szene und wechsle per Klick oder über das Symbol in der Systemleiste.",
+                "Save light, fans, performance and volume as a scene and switch with one click or from the panel icon.")));
 
         if (!Cc.Settings.General.SceneHotkeys)
             root.Children.Add(Ui.InfoBar(Loc.T("Tipp: Mit Tastenkürzeln schaltest du Szenen, ohne die App zu öffnen. Aktivieren unter Einstellungen → Globale Tastenkürzel.",
