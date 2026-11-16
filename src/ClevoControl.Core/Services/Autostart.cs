@@ -23,6 +23,7 @@ namespace ClevoControl.Core.Services;
 public static class Autostart
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private const string ApprovedKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
     private const string Name = "ClevoControl";
 
     /// <summary>Arguments the autostart passes to the app.</summary>
@@ -36,16 +37,22 @@ public static class Autostart
 
     public static bool IsEnabled => RegisteredPath() is not null;
 
-    /// <summary>The exe the autostart currently starts, or null if autostart is off.</summary>
+    /// <summary>
+    /// The exe the autostart currently starts, or null if autostart is off – also when the task is
+    /// disabled in Task Scheduler or the Run entry is switched off in Task Manager's Startup tab.
+    /// Starts a process (schtasks) – do not call on the UI thread.
+    /// </summary>
     public static string? RegisteredPath()
     {
         try
         {
             if (!OperatingSystem.IsWindows())
                 return File.Exists(LinuxEntry) ? ParseDesktopExec(File.ReadAllText(LinuxEntry)) ?? "" : null;
-            if (TaskCommand() is { } task) return task;
+            if (QueryTask() is { } task) return task.Enabled ? task.Command : null;
             using var k = Registry.CurrentUser.OpenSubKey(RunKey);
-            return k?.GetValue(Name) is string run ? ParseRunCommand(run) : null;
+            if (k?.GetValue(Name) is not string run) return null;
+            using var a = Registry.CurrentUser.OpenSubKey(ApprovedKey);
+            return VendorAutostart.IsApprovedEnabled(a?.GetValue(Name) as byte[]) ? ParseRunCommand(run) : null;
         }
         catch (Exception ex)
         {
@@ -54,6 +61,10 @@ public static class Autostart
         }
     }
 
+    /// <summary>
+    /// Switches the autostart on or off. Throws if that was not possible; read <see cref="IsEnabled"/>
+    /// afterwards for the real state. Starts processes (schtasks) – do not call on the UI thread.
+    /// </summary>
     public static void Set(bool enabled, string exePath)
     {
         if (!OperatingSystem.IsWindows())
@@ -80,8 +91,12 @@ public static class Autostart
         }
 
         Log.Warn("Autostart: logon task not possible, using the Run key instead: " + error);
-        using var k = Registry.CurrentUser.CreateSubKey(RunKey);
-        k.SetValue(Name, $"\"{exePath}\" {Arguments}");
+        DeleteTask(); // an older task would keep starting an old exe next to the Run entry
+        using (var k = Registry.CurrentUser.CreateSubKey(RunKey))
+            k.SetValue(Name, $"\"{exePath}\" {Arguments}");
+        // Switched off in Task Manager's Startup tab earlier: that flag would keep the entry from starting.
+        using (var a = Registry.CurrentUser.OpenSubKey(ApprovedKey, writable: true))
+            a?.DeleteValue(Name, false);
     }
 
     /// <summary>
@@ -96,7 +111,7 @@ public static class Autostart
         {
             var current = RegisteredPath();
             if (current is null) return;
-            var usesRunKey = OperatingSystem.IsWindows() && TaskCommand() is null;
+            var usesRunKey = OperatingSystem.IsWindows() && QueryTask() is null;
             if (!usesRunKey && string.Equals(Path.GetFullPath(current), Path.GetFullPath(exePath), StringComparison.OrdinalIgnoreCase)) return;
             Log.Info($"Autostart pointed to {current}{(usesRunKey ? " (Run key)" : "")} – updating it to {exePath}");
             Set(true, exePath);
@@ -162,6 +177,13 @@ public static class Autostart
         </Task>
         """;
 
+    /// <summary>False if the task's &lt;Settings&gt; contain &lt;Enabled&gt;false&lt;/Enabled&gt; (disabled in Task Scheduler).</summary>
+    internal static bool ParseTaskEnabled(string xml)
+    {
+        var settings = Regex.Match(xml, @"<Settings>(.*?)</Settings>", RegexOptions.Singleline);
+        return !settings.Success || !Regex.IsMatch(settings.Groups[1].Value, @"<Enabled>\s*false\s*</Enabled>", RegexOptions.IgnoreCase);
+    }
+
     /// <summary>The &lt;Command&gt; of a task XML, unescaped.</summary>
     internal static string? ParseTaskCommand(string xml)
     {
@@ -184,21 +206,48 @@ public static class Autostart
         return exe > 0 ? command[..(exe + 4)] : command;
     }
 
-    /// <summary>Exec="/path/clevocontrol" --minimized → /path/clevocontrol</summary>
+    /// <summary>Exec="/path/clevocontrol" --minimized → /path/clevocontrol (undoes <see cref="QuoteExec"/>).</summary>
     internal static string? ParseDesktopExec(string entry)
     {
         var line = entry.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.StartsWith("Exec=", StringComparison.Ordinal));
         if (line is null) return null;
-        var exec = line[5..].Trim();
-        if (exec.StartsWith('"')) return ParseRunCommand(exec);
-        var space = exec.IndexOf(' ');
-        return space > 0 ? exec[..space] : exec;
+        var exec = line[5..].Trim().Replace(@"\\", @"\"); // the string escape rule applies before the quoting rule
+        if (!exec.StartsWith('"'))
+        {
+            var space = exec.IndexOf(' ');
+            return (space > 0 ? exec[..space] : exec).Replace("%%", "%");
+        }
+        var sb = new StringBuilder();
+        for (var i = 1; i < exec.Length; i++)
+        {
+            var c = exec[i];
+            if (c == '\\' && i + 1 < exec.Length) { sb.Append(exec[++i]); continue; }
+            if (c == '"') break;
+            sb.Append(c);
+        }
+        return sb.ToString().Replace("%%", "%");
     }
 
-    private static string? TaskCommand()
+    /// <summary>
+    /// A path as quoted Exec argument (Desktop Entry spec): " ` $ \ get a backslash and % is doubled;
+    /// then every backslash is doubled again, because the string escape rule applies first.
+    /// </summary>
+    internal static string QuoteExec(string path)
+    {
+        var sb = new StringBuilder("\"");
+        foreach (var c in path)
+        {
+            if (c is '"' or '`' or '$' or '\\') sb.Append('\\');
+            if (c == '%') sb.Append('%');
+            sb.Append(c);
+        }
+        return sb.Append('"').ToString().Replace(@"\", @"\\");
+    }
+
+    private static (string Command, bool Enabled)? QueryTask()
     {
         var (code, output) = Schtasks("/query", "/tn", TaskName, "/xml");
-        return code == 0 ? ParseTaskCommand(output) : null;
+        return code == 0 && ParseTaskCommand(output) is { } command ? (command, ParseTaskEnabled(output)) : null;
     }
 
     private static bool CreateTask(string exePath, out string? error)
@@ -206,7 +255,9 @@ public static class Autostart
         var file = Path.Combine(Path.GetTempPath(), $"clevocontrol-autostart-{Environment.ProcessId}.xml");
         try
         {
-            var user = System.Security.Principal.WindowsIdentity.GetCurrent().Name;
+            // The SID always resolves (also for Microsoft and Entra ID accounts); Task Scheduler stores it anyway.
+            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            var user = identity.User?.Value ?? identity.Name;
             File.WriteAllText(file, TaskXml(exePath, user), Encoding.Unicode);
             var (code, output) = Schtasks("/create", "/tn", TaskName, "/xml", file, "/f");
             error = code == 0 ? null : output.Trim();
@@ -225,7 +276,9 @@ public static class Autostart
 
     private static void DeleteTask()
     {
-        if (TaskCommand() is not null) Schtasks("/delete", "/tn", TaskName, "/f");
+        if (QueryTask() is null) return;
+        var (code, output) = Schtasks("/delete", "/tn", TaskName, "/f");
+        if (code != 0) throw new InvalidOperationException("schtasks /delete: " + output.Trim());
     }
 
     private static void DeleteRunValue()
@@ -242,6 +295,8 @@ public static class Autostart
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8, // schtasks writes UTF-8 when redirected
+            StandardErrorEncoding = Encoding.UTF8,
         };
         foreach (var a in args) psi.ArgumentList.Add(a);
         using var p = Process.Start(psi)!;
@@ -264,7 +319,7 @@ public static class Autostart
         Name=ClevoControl
         GenericName=Laptop control center
         Comment=Keyboard lighting, fans and performance profiles for Clevo laptops
-        Exec="{exePath}"{(autostart ? " " + Arguments : "")}
+        Exec={QuoteExec(exePath)}{(autostart ? " " + Arguments : "")}
         Icon=clevocontrol
         Terminal=false
         Categories=System;Settings;HardwareSettings;

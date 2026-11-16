@@ -41,8 +41,14 @@ public sealed class PowerPage(ControlCenter cc) : AppPage(cc)
         root.Children.Add(ProfileCard());
         root.Children.Add(ThrottleCard());
         root.Children.Add(AutoSwitchCard());
+        // The AC/battery switch changes the profile in the background: keep the tiles in step.
+        Cc.StatusChanged += OnStatusChanged;
         return root;
     }
+
+    public override void OnLeave() => Cc.StatusChanged -= OnStatusChanged;
+
+    private void OnStatusChanged() => System.Windows.Application.Current?.Dispatcher.BeginInvoke(SyncTiles);
 
     /// <summary>Selects the tiles that match the current profile and Windows power mode, without running their actions.</summary>
     private void SyncTiles()

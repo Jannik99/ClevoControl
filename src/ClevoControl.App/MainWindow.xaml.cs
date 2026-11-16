@@ -12,6 +12,8 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, Func<AppPage>> _pages;
     private AppPage? _current;
     private string? _currentKey;
+    /// <summary>The page was left when hiding to the tray (timers and events stopped): rebuild it on the next activation.</summary>
+    private bool _pageLeft;
 
     public MainWindow(ControlCenter cc)
     {
@@ -135,6 +137,7 @@ public partial class MainWindow : Window
         {
             e.Cancel = true;
             _current?.OnLeave();
+            _pageLeft = true;
             Hide();
             (Application.Current as App)?.ShowTrayHint();
             return;
@@ -146,7 +149,10 @@ public partial class MainWindow : Window
     protected override void OnActivated(EventArgs e)
     {
         base.OnActivated(e);
-        _current?.OnShow();
+        // The user may have switched the keyboard layout meanwhile (cheap to detect on Windows).
+        Core.Platform.KeyboardLayout.Refresh();
+        if (_pageLeft && _currentKey is not null) { _pageLeft = false; Navigate(_currentKey); }
+        else _current?.OnShow();
     }
 }
 

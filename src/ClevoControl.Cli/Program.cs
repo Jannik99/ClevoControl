@@ -37,6 +37,7 @@ if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
 }
 
 if (args[0].Equals("daemon", StringComparison.OrdinalIgnoreCase)) return Daemon.Run(hw);
+Daemon.IgnoreSleepSignals();
 
 if (!hw.IsReal) Console.Error.WriteLine($"warning: {hw.Description}");
 
@@ -93,7 +94,10 @@ try
                 var mode = Enum.Parse<ClevoControl.Core.Services.CoolingMode>(arg, true);
                 if (!ClevoControl.Core.Services.CoolingService.Apply(mode))
                 {
-                    Console.Error.WriteLine(OperatingSystem.IsWindows() ? "Windows refused the change." : "Not permitted – install the ClevoControl permissions (contrib/linux/install.sh, see docs/LINUX.md) or run with sudo.");
+                    Console.Error.WriteLine(OperatingSystem.IsWindows() ? "Windows refused the change."
+                        : mode == ClevoControl.Core.Services.CoolingMode.VeryCool && !ClevoControl.Core.Services.CoolingService.CanLimitCpu
+                            ? "The CPU limit is not available: the CPU driver has no max_perf_pct (intel_pstate only). The turbo was switched off – use 'cooling cool'."
+                            : "Not permitted – install the ClevoControl permissions (contrib/linux/install.sh, see docs/LINUX.md) or run with sudo.");
                     return 1;
                 }
             }

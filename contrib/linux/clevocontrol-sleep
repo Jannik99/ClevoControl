@@ -2,8 +2,10 @@
 # systemd sleep hook: tells ClevoControl (desktop app or background service) to stop touching
 # the EC before suspend and to resume (after a short delay) when the laptop wakes up.
 # Installed to /usr/lib/systemd/system-sleep/clevocontrol by contrib/linux/install.sh.
+# Only "clevoctl daemon" is signalled: other clevoctl commands do not handle SIGUSR1/2.
+daemon='(^|/)clevoctl( --simulate)* daemon( |$)'
 case "$1" in
-  pre)  pkill -USR1 -x clevoctl; pkill -USR1 -x clevocontrol ;;
-  post) pkill -USR2 -x clevoctl; pkill -USR2 -x clevocontrol ;;
+  pre)  pkill -USR1 -f "$daemon"; pkill -USR1 -x clevocontrol ;;
+  post) pkill -USR2 -f "$daemon"; pkill -USR2 -x clevocontrol ;;
 esac
 exit 0

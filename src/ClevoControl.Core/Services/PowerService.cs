@@ -94,20 +94,61 @@ public sealed class PowerService
         }
     }
 
-    /// <summary>Called periodically and on power events; applies AC/battery rules when the source changes.</summary>
+    /// <summary>Where <see cref="CheckPowerSource"/> reads the power source from (replaced by tests).</summary>
+    internal Func<bool> OnAcSource { get; set; } = () => IsOnAc;
+
+    /// <summary>
+    /// Called periodically and on power events; applies AC/battery rules when the source changes
+    /// (<paramref name="force"/>: at start and when the rules themselves changed). A profile set by the
+    /// auto-switch is written to <see cref="PowerSettings.Profile"/> so the UI and fans per profile agree with the EC.
+    /// </summary>
     public void CheckPowerSource(PowerSettings settings, bool force = false)
     {
-        var onAc = IsOnAc;
-        if (!force && _lastOnAc == onAc) return;
-        _lastOnAc = onAc;
-
-        if (settings.AutoSwitch)
-            SetProfile(onAc ? settings.ProfileOnAc : settings.ProfileOnBattery, settings.SyncWindowsPowerMode);
-
-        if (settings.LowRefreshOnBattery)
+        lock (_gate)
         {
-            if (onAc) DisplayService.SetRefreshRate(DisplayService.GetMaxRefreshRate());
-            else DisplayService.SetRefreshRate(settings.BatteryRefreshRate);
+            var onAc = OnAcSource();
+            if (!force && _lastOnAc == onAc) return;
+            _lastOnAc = onAc;
+            if (force) _rules = RulesOf(settings);
+
+            if (settings.AutoSwitch)
+            {
+                var profile = onAc ? settings.ProfileOnAc : settings.ProfileOnBattery;
+                settings.Profile = profile;
+                SetProfile(profile, settings.SyncWindowsPowerMode);
+            }
+
+            if (settings.LowRefreshOnBattery)
+            {
+                if (onAc) DisplayService.SetRefreshRate(DisplayService.GetMaxRefreshRate());
+                else DisplayService.SetRefreshRate(settings.BatteryRefreshRate);
+            }
+        }
+    }
+
+    private readonly object _gate = new();
+    private (bool, PerformanceProfile, PerformanceProfile, bool, int)? _rules;
+
+    private static (bool, PerformanceProfile, PerformanceProfile, bool, int) RulesOf(PowerSettings s) =>
+        (s.AutoSwitch, s.ProfileOnAc, s.ProfileOnBattery, s.LowRefreshOnBattery, s.BatteryRefreshRate);
+
+    /// <summary>
+    /// Applies <paramref name="settings"/> after they were changed (page, tray, scene, automation). An explicit
+    /// profile choice is kept until the power source actually changes; the AC/battery rules are applied right away
+    /// only when the rules themselves changed (auto-switch switched on, other profile for AC/battery …).
+    /// </summary>
+    public void Apply(PowerSettings settings)
+    {
+        lock (_gate)
+        {
+            var rulesChanged = _rules != RulesOf(settings);
+            if (rulesChanged && settings.AutoSwitch)
+            {
+                CheckPowerSource(settings, force: true);
+                return;
+            }
+            SetProfile(settings.Profile, settings.SyncWindowsPowerMode);
+            if (rulesChanged) CheckPowerSource(settings, force: true);
         }
     }
 }

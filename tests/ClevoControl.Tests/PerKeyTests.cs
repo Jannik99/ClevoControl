@@ -294,6 +294,57 @@ public sealed class PerKeyTests
     }
 
     [Fact]
+    public void Failed_brightness_write_is_retried()
+    {
+        var kb = new SimulatedPerKey();
+        kb.SetAll(RgbColor.White); // clears the initial "send everything" state
+        kb.FailNextWrite = true;
+        Assert.Throws<IOException>(() => kb.SetBrightness(100));
+        Assert.Empty(kb.BrightnessWrites);
+        kb.SetBrightness(100); // same level again: must still be sent
+        Assert.Equal([(byte)100], kb.BrightnessWrites);
+        kb.SetBrightness(100); // now it is on the controller
+        Assert.Single(kb.BrightnessWrites);
+    }
+
+    [Fact]
+    public void Brightness_change_keeps_a_running_hardware_effect()
+    {
+        var kb = new SimulatedPerKey();
+        kb.SetAll(RgbColor.White);
+        kb.SetHardwareEffect(HardwareEffect.Wave, new RgbColor(255, 0, 0));
+        Assert.True(kb.HardwareEffectRunning);
+        var frames = kb.Writes;
+        kb.SetBrightness(50);
+        Assert.True(kb.HardwareEffectRunning);
+        Assert.Equal(2, kb.EffectWrites); // the effect was restarted with the new brightness ...
+        Assert.Equal(frames, kb.Writes);  // ... instead of sending the rows (user mode)
+        kb.SetAll(RgbColor.White);
+        Assert.False(kb.HardwareEffectRunning); // a frame ends the effect
+    }
+
+    [Fact]
+    public void Null_per_key_colors_in_settings_become_empty()
+    {
+        var kb = System.Text.Json.JsonSerializer.Deserialize<KeyboardSettings>("""{"PerKeyColors": null}""", SettingsStore.JsonOptions)!;
+        Assert.NotNull(kb.PerKeyColors);
+        Assert.Empty(kb.PerKeyColors);
+
+        var dir = Directory.CreateTempSubdirectory("clevo-settings-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "settings.json"), """{"Keyboard": {"PerKeyColors": null}}""");
+            var store = new SettingsStore(dir);
+            Assert.Empty(store.Current.Keyboard.PerKeyColors);
+            store.Dispose();
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Engine_renders_painted_keys_and_waves()
     {
         using var engine = new LightingEngine(new SimulatedHardware("test"), new KeyboardSettings { Enabled = false }, () => SensorSnapshot.Empty, new Cs2Integration());

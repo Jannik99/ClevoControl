@@ -31,7 +31,11 @@ public static partial class LinuxPower
         return (turbo, max);
     }
 
-    /// <summary>Writes turbo and limit. Returns false if not permitted (install contrib/linux rules) or not supported.</summary>
+    /// <summary>
+    /// Writes turbo and limit. Returns false if not permitted (install contrib/linux rules) or not supported –
+    /// also when a limit below 100 % was asked for but the CPU driver has no max_perf_pct (AMD, acpi-cpufreq):
+    /// the turbo is still switched, but the limit itself cannot be applied.
+    /// </summary>
     public static bool ApplyCpuLimits(bool turboOn, int maxPercent)
     {
         var ok = true;
@@ -39,6 +43,11 @@ public static partial class LinuxPower
         else if (File.Exists(LinuxSys.P(CpufreqBoost))) ok &= TryWrite(CpufreqBoost, turboOn ? "1" : "0");
         else ok = false;
         if (CanLimitCpu) ok &= TryWrite(Pstate + "/max_perf_pct", Math.Clamp(maxPercent, 10, 100).ToString(CultureInfo.InvariantCulture));
+        else if (maxPercent < 100)
+        {
+            Log.Warn($"CPU limit {maxPercent} % not applied: the CPU driver offers no max_perf_pct (intel_pstate only)");
+            ok = false;
+        }
         return ok;
     }
 

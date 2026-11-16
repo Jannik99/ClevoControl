@@ -366,6 +366,29 @@ public class AutostartTests
     }
 
     [Theory]
+    [InlineData("/home/a/My Apps/clevocontrol")]
+    [InlineData("/home/a/$HOME `x` \"q\" 100%/clevo\\control")]
+    public void Desktop_exec_escapes_special_characters_and_round_trips(string path)
+    {
+        var entry = Autostart.LinuxDesktopEntry(path, autostart: true);
+        var exec = entry.Split('\n').First(l => l.StartsWith("Exec=", StringComparison.Ordinal));
+        Assert.DoesNotContain("$HOME", exec.Replace(@"\$HOME", "")); // $ is escaped
+        Assert.DoesNotContain("100% ", exec);                         // % is doubled
+        Assert.Equal(path, Autostart.ParseDesktopExec(entry));
+    }
+
+    [Fact]
+    public void Disabled_task_is_detected()
+    {
+        var xml = Autostart.TaskXml(@"C:\x\ClevoControl.exe", "S-1-5-21-1");
+        Assert.True(Autostart.ParseTaskEnabled(xml));
+        // The trigger's own <Enabled> must not count, only the task's <Settings>.
+        var disabled = System.Text.RegularExpressions.Regex.Replace(xml, @"(<Settings>.*?)<Enabled>true</Enabled>", "$1<Enabled>false</Enabled>",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        Assert.False(Autostart.ParseTaskEnabled(disabled));
+    }
+
+    [Theory]
     [InlineData(@"C:\Code\ClevoControl\src\ClevoControl.App\bin\x64\Debug\net9.0-windows\win-x64\ClevoControl.exe", true)]
     [InlineData(@"C:\Users\A\AppData\Local\Programs\ClevoControl\ClevoControl.exe", false)]
     [InlineData("/home/a/cc/src/ClevoControl.Desktop/bin/Release/net9.0/clevocontrol", true)]

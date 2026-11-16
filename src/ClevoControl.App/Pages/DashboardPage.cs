@@ -101,14 +101,8 @@ public sealed class DashboardPage(ControlCenter cc) : AppPage(cc)
     private Border FirstRunCard(StackPanel root)
     {
         var g = Cc.Settings.General;
-        var exe = Environment.ProcessPath ?? "";
         var s = new StackPanel();
-        s.Children.Add(Ui.Switch(Loc.T("Mit Windows starten", "Start with Windows"), Autostart.IsEnabled, v =>
-        {
-            g.StartWithWindows = v;
-            try { Autostart.Set(v, exe); } catch (Exception ex) { Log.Error("Autostart", ex); }
-            Cc.Store.SaveSoon();
-        }, Loc.T("Empfohlen: eigene Lüfterkurven, Effekte und die Automatik laufen nur, solange die App läuft.",
+        s.Children.Add(SettingsPage.AutostartSwitch(Cc, Loc.T("Mit Windows starten", "Start with Windows"), Loc.T("Empfohlen: eigene Lüfterkurven, Effekte und die Automatik laufen nur, solange die App läuft.",
             "Recommended: custom fan curves, effects and automation only run while the app is running.")));
         s.Children.Add(Ui.Switch(Loc.T("Beim Schließen im Infobereich weiterlaufen", "Keep running in the tray when closed"), g.CloseToTray,
             v => { g.CloseToTray = v; Cc.Store.SaveSoon(); },

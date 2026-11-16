@@ -14,6 +14,29 @@ internal static class Daemon
 {
     private const int SigUsr1 = 10, SigUsr2 = 12; // Linux x86-64 / arm64 numbers
 
+    private static PosixSignalRegistration[]? s_ignored;
+
+    /// <summary>
+    /// One-shot commands: SIGUSR1/2 are meant for the daemon (sleep hook), and their default action would
+    /// terminate a command that happens to run at that moment. Kept in a static field so the registrations live on.
+    /// </summary>
+    public static void IgnoreSleepSignals()
+    {
+        if (!OperatingSystem.IsLinux() || s_ignored is not null) return;
+        try
+        {
+            s_ignored =
+            [
+                PosixSignalRegistration.Create((PosixSignal)SigUsr1, c => c.Cancel = true),
+                PosixSignalRegistration.Create((PosixSignal)SigUsr2, c => c.Cancel = true),
+            ];
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Could not ignore SIGUSR1/2: " + ex.Message);
+        }
+    }
+
     public static int Run(IClevoHardware hw)
     {
         Log.Info($"Daemon start: {hw.Description}");
@@ -24,14 +47,71 @@ internal static class Daemon
         var stop = new ManualResetEventSlim();
         var gate = new object();
         var cc = Start(hw);
+        // Between SIGUSR1 and SIGUSR2 (+ settle delay) the EC must not be touched, and a new ControlCenter
+        // would write it right away. A reload asked for meanwhile waits until the EC is usable again.
+        var suspended = false;
+        var reloadPending = false;
+        Timer? reloadTimer = null;
+
+        void ReloadNow()
+        {
+            Log.Info("Daemon: reloading settings");
+            // Without saving: settings.json was just edited by hand and the old state must not overwrite it.
+            cc.Dispose(saveSettings: false);
+            cc = Start(hw);
+        }
 
         void Reload()
         {
             lock (gate)
             {
-                Log.Info("Daemon: reloading settings");
-                cc.Dispose();
-                cc = Start(hw);
+                if (suspended || reloadTimer is not null)
+                {
+                    Log.Info("Daemon: reload deferred until the resume settle delay has passed");
+                    reloadPending = true;
+                    return;
+                }
+                ReloadNow();
+            }
+        }
+
+        void Suspend()
+        {
+            lock (gate)
+            {
+                suspended = true;
+                reloadTimer?.Dispose();
+                reloadTimer = null;
+                cc.OnSuspend();
+            }
+        }
+
+        void Resume()
+        {
+            lock (gate)
+            {
+                suspended = false;
+                if (!reloadPending)
+                {
+                    cc.OnResume();
+                    return;
+                }
+                // The old instance stays paused; the new one starts once the EC has settled.
+                reloadPending = false;
+                reloadTimer?.Dispose();
+                Timer? timer = null;
+                timer = new Timer(_ =>
+                {
+                    lock (gate)
+                    {
+                        if (!ReferenceEquals(reloadTimer, timer)) return;
+                        reloadTimer = null;
+                        timer!.Dispose();
+                        ReloadNow();
+                    }
+                }, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+                reloadTimer = timer;
+                timer.Change(ControlCenter.ResumeSettle, Timeout.InfiniteTimeSpan);
             }
         }
 
@@ -43,13 +123,18 @@ internal static class Daemon
         if (OperatingSystem.IsLinux())
         {
             registrations.Add(PosixSignalRegistration.Create(PosixSignal.SIGHUP, c => { c.Cancel = true; Reload(); }));
-            registrations.Add(PosixSignalRegistration.Create((PosixSignal)SigUsr1, c => { c.Cancel = true; lock (gate) cc.OnSuspend(); }));
-            registrations.Add(PosixSignalRegistration.Create((PosixSignal)SigUsr2, c => { c.Cancel = true; lock (gate) cc.OnResume(); }));
+            registrations.Add(PosixSignalRegistration.Create((PosixSignal)SigUsr1, c => { c.Cancel = true; Suspend(); }));
+            registrations.Add(PosixSignalRegistration.Create((PosixSignal)SigUsr2, c => { c.Cancel = true; Resume(); }));
         }
 
         stop.Wait();
         Console.WriteLine("Stopping – fans go back to automatic if a custom curve was active.");
-        lock (gate) cc.Dispose();
+        lock (gate)
+        {
+            reloadTimer?.Dispose();
+            reloadTimer = null;
+            cc.Dispose();
+        }
         foreach (var r in registrations) r.Dispose();
         Log.Info("Daemon stopped");
         return 0;

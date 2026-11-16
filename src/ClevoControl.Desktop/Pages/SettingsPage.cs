@@ -20,20 +20,8 @@ public sealed class SettingsPage(ControlCenter cc) : AppPage(cc)
         root.Children.Add(Ui.PageSubtitle(Loc.T("App-Verhalten und Start", "App behaviour and startup")));
 
         var windows = OperatingSystem.IsWindows();
-        var exe = Environment.ProcessPath ?? "";
         var s = new StackPanel();
-        s.Children.Add(Ui.Switch(windows ? Loc.T("Mit Windows starten", "Start with Windows") : Loc.T("Mit dem System starten", "Start with the system"),
-            Autostart.IsEnabled, v =>
-            {
-                g.StartWithWindows = v;
-                try { Autostart.Set(v, exe); }
-                catch (Exception ex)
-                {
-                    Log.Error("Autostart", ex);
-                    _ = Ui.MessageAsync(Owner, Loc.T("Autostart konnte nicht geändert werden: ", "Could not change autostart: ") + ex.Message);
-                }
-                Cc.Store.SaveSoon();
-            }));
+        s.Children.Add(AutostartSwitch(Cc, Owner, windows ? Loc.T("Mit Windows starten", "Start with Windows") : Loc.T("Mit dem System starten", "Start with the system")));
         s.Children.Add(Ui.Switch(Loc.T("Beim Autostart minimiert starten", "Start minimized on autostart"), g.StartMinimized, v => { g.StartMinimized = v; Cc.Store.SaveSoon(); }));
         s.Children.Add(Ui.Switch(windows ? Loc.T("Beim Schließen im Infobereich weiterlaufen", "Keep running in the tray when closed")
                                          : Loc.T("Beim Schließen in der Systemleiste weiterlaufen", "Keep running in the panel when closed"),
@@ -115,6 +103,47 @@ public sealed class SettingsPage(ControlCenter cc) : AppPage(cc)
             body.Children.Add(quit);
         }
         Ui.TrimBottom(body.Children.Count > 0 ? body.Children[^1] : null);
+    }
+
+    /// <summary>
+    /// The autostart switch. Reading and changing the autostart can start processes (schtasks), so
+    /// both run off the UI thread; the switch is disabled meanwhile and then shows the real state.
+    /// </summary>
+    internal static Grid AutostartSwitch(ControlCenter cc, Window? owner, string label, string? description = null)
+    {
+        var exe = Environment.ProcessPath ?? "";
+        var current = cc.Settings.General.StartWithWindows;
+        var busy = true;
+        ToggleSwitch? ts = null;
+        var toggle = Ui.Toggle(current, v =>
+        {
+            if (busy || v == current || ts is null) return;
+            busy = true;
+            ts.IsEnabled = false;
+            Run(() => Autostart.Set(v, exe));
+        }, label);
+        ts = toggle.Tag as ToggleSwitch;
+        if (ts is not null) ts.IsEnabled = false;
+        Run(null);
+        return Ui.Row(label, toggle, description);
+
+        void Run(Action? change) => Task.Run(() =>
+        {
+            string? error = null;
+            try { change?.Invoke(); }
+            catch (Exception ex) { Log.Error("Autostart", ex); error = ex.Message; }
+            var enabled = Autostart.IsEnabled;
+            Dispatcher.UIThread.Post(() =>
+            {
+                current = enabled;
+                cc.Settings.General.StartWithWindows = enabled;
+                cc.Store.SaveSoon();
+                if (ts is not null) { ts.IsChecked = enabled; ts.IsEnabled = true; }
+                busy = false;
+                if (error is not null)
+                    _ = Ui.MessageAsync(owner, Loc.T("Autostart konnte nicht geändert werden: ", "Could not change autostart: ") + error);
+            });
+        });
     }
 
     private static Control VendorRow(VendorStartupItem item)

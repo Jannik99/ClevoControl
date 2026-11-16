@@ -162,7 +162,7 @@ On a dual-boot machine you can also copy `%APPDATA%\ClevoControl\settings.json` 
 
 ### Local API
 
-With *Games & integrations → Local API* enabled (or `"LocalApiEnabled": true`) ClevoControl listens on `127.0.0.1:3002`:
+With *Games & integrations → Local API* enabled (or `"LocalApiEnabled": true`) ClevoControl listens on `127.0.0.1:3002`. Requests made by web pages (with an `Origin` header or a foreign `Host`) are refused; scripts and curl work:
 
 ```bash
 curl http://127.0.0.1:3002/status

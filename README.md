@@ -204,7 +204,7 @@ clevoctl profile quiet
 
 ## Local API
 
-Enable it under *Games & apps*. It only listens on `127.0.0.1`.
+Enable it under *Games & apps*. It only listens on `127.0.0.1` and refuses requests made by web pages (requests with an `Origin` header or a foreign `Host`), so scripts and tools like curl work but websites cannot control it.
 
 ```
 curl http://127.0.0.1:3002/status

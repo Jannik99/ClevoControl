@@ -15,11 +15,18 @@ public sealed class MiniHttpServer : IDisposable
     private readonly TcpListener _listener;
     private readonly Handler _handler;
     private readonly CancellationTokenSource _cts = new();
+    private readonly bool _rejectBrowsers;
 
-    public MiniHttpServer(int port, Handler handler)
+    /// <param name="rejectBrowsers">
+    /// Refuse requests made by web pages: any request with an Origin or Sec-Fetch-Site header (sent by browsers,
+    /// not by curl or scripts) and requests whose Host is not the loopback address (DNS rebinding). Without this,
+    /// any website could POST to the local API (a "simple" cross-site request needs no CORS preflight).
+    /// </param>
+    public MiniHttpServer(int port, Handler handler, bool rejectBrowsers = false)
     {
         Port = port;
         _handler = handler;
+        _rejectBrowsers = rejectBrowsers;
         _listener = new TcpListener(IPAddress.Loopback, port);
         _listener.Start();
         _ = AcceptLoop();
@@ -59,11 +66,14 @@ public sealed class MiniHttpServer : IDisposable
             var request = lines[0].Split(' ');
             if (request.Length < 2) return;
             var length = 0;
-            foreach (var l in lines)
+            var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var l in lines.Skip(1))
             {
-                if (l.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
-                    int.TryParse(l[15..].Trim(), out length);
+                var colon = l.IndexOf(':');
+                if (colon <= 0) continue;
+                headers[l[..colon].Trim()] = l[(colon + 1)..].Trim();
             }
+            if (headers.TryGetValue("Content-Length", out var cl)) int.TryParse(cl, out length);
             length = Math.Clamp(length, 0, 1 << 20);
             var body = new byte[length];
             var read = 0;
@@ -73,7 +83,9 @@ public sealed class MiniHttpServer : IDisposable
                 if (n == 0) break;
                 read += n;
             }
-            var (status, text) = _handler(request[0], request[1], Encoding.UTF8.GetString(body, 0, read));
+            var (status, text) = _rejectBrowsers && RejectReason(headers, Port) is { } reason
+                ? (403, "{\"error\":\"" + reason + "\"}")
+                : _handler(request[0], request[1], Encoding.UTF8.GetString(body, 0, read));
             var payload = Encoding.UTF8.GetBytes(text);
             var resp = $"HTTP/1.1 {status} {(status == 200 ? "OK" : "Error")}\r\nContent-Type: application/json\r\nContent-Length: {payload.Length}\r\nConnection: close\r\n\r\n";
             await stream.WriteAsync(Encoding.ASCII.GetBytes(resp));
@@ -83,6 +95,21 @@ public sealed class MiniHttpServer : IDisposable
         {
             // ignore broken clients
         }
+    }
+
+    /// <summary>Why a request is refused when browsers are rejected (see the constructor), or null if it is fine.</summary>
+    internal static string? RejectReason(IReadOnlyDictionary<string, string> headers, int port)
+    {
+        if (headers.ContainsKey("Origin")) return "requests from web pages are not allowed";
+        if (headers.TryGetValue("Sec-Fetch-Site", out var site) && !site.Equals("none", StringComparison.OrdinalIgnoreCase))
+            return "requests from web pages are not allowed";
+        if (headers.TryGetValue("Host", out var host) && host.Length > 0)
+        {
+            var p = port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string[] allowed = ["127.0.0.1", "localhost", "[::1]", $"127.0.0.1:{p}", $"localhost:{p}", $"[::1]:{p}"];
+            if (!allowed.Contains(host, StringComparer.OrdinalIgnoreCase)) return "unexpected Host header";
+        }
+        return null;
     }
 
     public void Dispose()

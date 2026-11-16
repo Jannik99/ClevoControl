@@ -21,6 +21,9 @@ public static class CoolingService
     /// <summary>False on Linux systems whose CPU driver offers no turbo switch.</summary>
     public static bool IsSupported => OperatingSystem.IsWindows() || (OperatingSystem.IsLinux() && Platform.LinuxPower.CanControlTurbo);
 
+    /// <summary>False where only the turbo can be switched but the CPU cannot be limited ("Very cool"; Linux without intel_pstate).</summary>
+    public static bool CanLimitCpu => OperatingSystem.IsWindows() || (OperatingSystem.IsLinux() && Platform.LinuxPower.CanLimitCpu);
+
     private static readonly Guid SubProcessor = new("54533251-82be-4824-96c1-47b60b740d00");
     private static readonly Guid MaxProcessorState = new("bc5038f7-23e0-4960-96da-33abaf5935ec");
     private static readonly Guid PerfBoostMode = new("be337238-0d82-4146-a960-4f3749d470c7");

@@ -69,7 +69,9 @@ public sealed class ControlCenter : IDisposable
         {
             Power.SetProfile(Settings.Power.Profile, false);
         }
+        var startProfile = Settings.Power.Profile;
         Power.CheckPowerSource(Settings.Power, force: Settings.Power.AutoSwitch);
+        if (Settings.Power.Profile != startProfile) store.SaveSoon();
         _powerTimer = new Timer(_ => { try { CheckPowerSource(); } catch { } }, null, 5000, 5000);
 
         German = Language.IsGerman(Settings.General.Language);
@@ -156,17 +158,26 @@ public sealed class ControlCenter : IDisposable
         _ => de ? "Automatisch" : "Automatic",
     };
 
-    /// <summary>AC/battery check (timer and power events). Records the change when the auto-switch set a profile.</summary>
+    /// <summary>
+    /// AC/battery check (timer and power events). Records the change when the auto-switch set a profile.
+    /// Does nothing while the laptop sleeps or the EC is still settling after resume.
+    /// </summary>
     public void CheckPowerSource()
     {
+        if (_suspended) return;
         var before = Power.ActiveProfile;
         Power.CheckPowerSource(Settings.Power);
         if (Settings.Power.AutoSwitch && Power.ActiveProfile is { } p && p != before)
+        {
+            Store.SaveSoon();
             ReportChange(ChangeSource.PowerAutoSwitch, T($"Profil „{ProfileText(p, true)}“ vom Netzteil-Automatismus gesetzt ({(PowerService.IsOnAc ? "Netzteil" : "Akku")})",
                 $"Profile “{ProfileText(p, false)}” set by the AC/battery auto-switch ({(PowerService.IsOnAc ? "on AC" : "on battery")})"));
+        }
     }
 
     private Platform.LinuxKeyboard? _linuxKeyboard;
+    private readonly object _linuxKeyboardLock = new();
+    private bool _disposed;
 
     /// <summary>Why key events are unavailable on Linux (permissions), or null.</summary>
     public string? KeyboardInputError { get; private set; }
@@ -181,19 +192,23 @@ public sealed class ControlCenter : IDisposable
     private void UpdateLinuxKeyboard()
     {
         if (!OperatingSystem.IsLinux()) return;
-        var needed = Settings.General.SceneHotkeys || Settings.Keyboard.Effect == LightingEffectKind.Reactive;
-        if (needed && _linuxKeyboard is null)
+        // Called from the UI, the API and hotkey threads: without the lock two readers could start and every key would count twice.
+        lock (_linuxKeyboardLock)
         {
-            _linuxKeyboard = new Platform.LinuxKeyboard();
-            KeyboardInputError = _linuxKeyboard.Error;
-            _linuxKeyboard.KeyPressed += Lighting.NotifyKeyPress;
-            _linuxKeyboard.Hotkey += id => { if (Settings.General.SceneHotkeys) HandleHotkey(id); };
-        }
-        else if (!needed && _linuxKeyboard is not null)
-        {
-            _linuxKeyboard.Dispose();
-            _linuxKeyboard = null;
-            KeyboardInputError = null;
+            var needed = !_disposed && (Settings.General.SceneHotkeys || Settings.Keyboard.Effect == LightingEffectKind.Reactive);
+            if (needed && _linuxKeyboard is null)
+            {
+                _linuxKeyboard = new Platform.LinuxKeyboard();
+                KeyboardInputError = _linuxKeyboard.Error;
+                _linuxKeyboard.KeyPressed += Lighting.NotifyKeyPress;
+                _linuxKeyboard.Hotkey += id => { if (Settings.General.SceneHotkeys) HandleHotkey(id); };
+            }
+            else if (!needed && _linuxKeyboard is not null)
+            {
+                _linuxKeyboard.Dispose();
+                _linuxKeyboard = null;
+                KeyboardInputError = null;
+            }
         }
     }
 
@@ -282,8 +297,8 @@ public sealed class ControlCenter : IDisposable
     public void ApplyPower()
     {
         NoteManualChange();
-        Power.SetProfile(Settings.Power.Profile, Settings.Power.SyncWindowsPowerMode);
-        Power.CheckPowerSource(Settings.Power, force: true);
+        // An explicit profile choice wins over the AC/battery auto-switch until the power source changes.
+        Power.Apply(Settings.Power);
         Store.SaveSoon();
     }
 
@@ -419,6 +434,8 @@ public sealed class ControlCenter : IDisposable
             kb.GainBlue = Settings.Keyboard.GainBlue;
             kb.Favorites = Settings.Keyboard.Favorites;
             kb.Region = Settings.Keyboard.Region;
+            // Painted per-key colors stay unless the scene brings its own.
+            if (kb.PerKeyColors is not { Count: > 0 }) kb.PerKeyColors = Settings.Keyboard.PerKeyColors;
             Settings.Keyboard = kb;
             ApplyKeyboard();
         }
@@ -561,7 +578,7 @@ public sealed class ControlCenter : IDisposable
         {
             _api?.Dispose();
             _api = null;
-            try { _api = new MiniHttpServer(g.LocalApiPort, HandleApi); }
+            try { _api = new MiniHttpServer(g.LocalApiPort, HandleApi, rejectBrowsers: true); }
             catch (Exception ex) { IntegrationError = $"API port {g.LocalApiPort}: {ex.Message}"; }
         }
         else if (!g.LocalApiEnabled && _api is not null)
@@ -629,13 +646,24 @@ public sealed class ControlCenter : IDisposable
 
     private Timer? _resumeTimer;
 
+    /// <summary>Between <see cref="OnSuspend"/> and the end of the settle delay after <see cref="OnResume"/>: no AC/battery switching.</summary>
+    private volatile bool _suspended;
+
+    /// <summary>True while the laptop sleeps or the EC is still settling after resume.</summary>
+    public bool IsSuspended => _suspended;
+
+    /// <summary>Delay after resume before the EC is touched again.</summary>
+    public static readonly TimeSpan ResumeSettle = TimeSpan.FromSeconds(10);
+
     /// <summary>
     /// Before sleep: stop every access to the EC (lighting, sensors) and hand fans back to the firmware.
     /// </summary>
     public void OnSuspend()
     {
         Log.Info("Suspend: pausing EC access");
+        _suspended = true;
         _resumeTimer?.Dispose();
+        _resumeTimer = null;
         Lighting.Paused = true;
         Sensors.Paused = true;
         try { Fans.Suspend(); } catch (Exception ex) { Log.Error("Fan suspend failed", ex); }
@@ -650,8 +678,11 @@ public sealed class ControlCenter : IDisposable
     {
         Log.Info("Resume: waiting before touching the EC");
         _resumeTimer?.Dispose();
-        _resumeTimer = new Timer(_ =>
+        Timer? timer = null;
+        timer = new Timer(_ =>
         {
+            // A new suspend (or resume) replaced this timer: it must not re-enable anything.
+            if (!ReferenceEquals(Volatile.Read(ref _resumeTimer), timer)) return;
             try
             {
                 Sensors.Paused = false;
@@ -664,17 +695,40 @@ public sealed class ControlCenter : IDisposable
             {
                 Log.Error("Resume failed", ex);
             }
-        }, null, TimeSpan.FromSeconds(10), Timeout.InfiniteTimeSpan);
+            finally
+            {
+                _suspended = false;
+            }
+        }, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        _resumeTimer = timer;
+        timer.Change(ResumeSettle, Timeout.InfiniteTimeSpan);
     }
 
-    public void Dispose()
+    public void Dispose() => Dispose(saveSettings: true);
+
+    /// <summary>
+    /// Stops everything. <paramref name="saveSettings"/> = false discards the in-memory settings (reload after
+    /// settings.json was edited by hand: the old state must not overwrite the file).
+    /// </summary>
+    public void Dispose(bool saveSettings)
     {
+        lock (_linuxKeyboardLock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+        }
         Store.SaveRequested -= OnSaveRequested;
         AutoProfiles.Dispose();
         _powerTimer.Dispose();
-        Store.SaveNow();
+        _resumeTimer?.Dispose();
+        if (saveSettings) Store.SaveNow();
+        Store.Dispose();
         Hook.Dispose();
-        _linuxKeyboard?.Dispose();
+        lock (_linuxKeyboardLock)
+        {
+            _linuxKeyboard?.Dispose();
+            _linuxKeyboard = null;
+        }
         _openRgb?.Dispose();
         _api?.Dispose();
         Cs2.Dispose();

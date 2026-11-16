@@ -17,14 +17,8 @@ public sealed class SettingsPage(ControlCenter cc) : AppPage(cc)
         root.Children.Add(Ui.PageTitle(Loc.T("Einstellungen", "Settings")));
         root.Children.Add(Ui.PageSubtitle(Loc.T("App-Verhalten und Start", "App behaviour and startup")));
 
-        var exe = Environment.ProcessPath ?? "";
         var s = new StackPanel();
-        s.Children.Add(Ui.Switch(Loc.T("Mit Windows starten", "Start with Windows"), Autostart.IsEnabled, v =>
-        {
-            g.StartWithWindows = v;
-            Autostart.Set(v, exe);
-            Cc.Store.SaveSoon();
-        }));
+        s.Children.Add(AutostartSwitch(Cc, Loc.T("Mit Windows starten", "Start with Windows")));
         s.Children.Add(Ui.Switch(Loc.T("Beim Autostart minimiert starten", "Start minimized on autostart"), g.StartMinimized, v => { g.StartMinimized = v; Cc.Store.SaveSoon(); }));
         s.Children.Add(Ui.Switch(Loc.T("Beim Schließen im Infobereich weiterlaufen", "Keep running in the tray when closed"), g.CloseToTray, v => { g.CloseToTray = v; Cc.Store.SaveSoon(); },
             Loc.T("Effekte, Lüfterkurve und Automatik laufen nur, solange die App läuft.", "Effects, fan curve and automation only run while the app is running.")));
@@ -101,6 +95,49 @@ public sealed class SettingsPage(ControlCenter cc) : AppPage(cc)
             body.Children.Add(quit);
         }
         Ui.TrimBottom(body.Children.Count > 0 ? body.Children[^1] : null);
+    }
+
+    /// <summary>
+    /// The "start with Windows" switch. Reading and changing the autostart starts schtasks, so both
+    /// run off the UI thread; the switch is disabled meanwhile and then shows the real state.
+    /// </summary>
+    internal static Grid AutostartSwitch(ControlCenter cc, string label, string? description = null)
+    {
+        var exe = Environment.ProcessPath ?? "";
+        var current = cc.Settings.General.StartWithWindows;
+        var busy = true;
+        CheckBox? toggle = null;
+        toggle = Ui.Toggle(current, v =>
+        {
+            if (busy || v == current) return;
+            busy = true;
+            toggle!.IsEnabled = false;
+            Run(() => Autostart.Set(v, exe));
+        });
+        var row = Ui.Row(label, toggle, description);
+        toggle.IsEnabled = false;
+        Run(null);
+        return row;
+
+        void Run(Action? change) => Task.Run(() =>
+        {
+            string? error = null;
+            try { change?.Invoke(); }
+            catch (Exception ex) { Log.Error("Autostart", ex); error = ex.Message; }
+            var enabled = Autostart.IsEnabled;
+            Application.Current?.Dispatcher.BeginInvoke(() =>
+            {
+                current = enabled;
+                cc.Settings.General.StartWithWindows = enabled;
+                cc.Store.SaveSoon();
+                toggle!.IsChecked = enabled;
+                toggle.IsEnabled = true;
+                busy = false;
+                if (error is not null)
+                    MessageBox.Show(Loc.T("Autostart konnte nicht geändert werden: ", "Could not change autostart: ") + error,
+                        "ClevoControl", MessageBoxButton.OK, MessageBoxImage.Warning);
+            });
+        });
     }
 
     private static UIElement VendorRow(VendorStartupItem item)

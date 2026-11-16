@@ -114,7 +114,14 @@ public sealed class KeyboardSettings
     /// Colors of the "per key" effect by key id (PC scan code, see <see cref="Platform.KeyIds"/>), so they do not depend on the
     /// keyboard layout. Keys without an entry stay dark.
     /// </summary>
-    public Dictionary<int, RgbColor> PerKeyColors { get; set; } = [];
+    public Dictionary<int, RgbColor> PerKeyColors
+    {
+        get => _perKeyColors;
+        // "PerKeyColors": null in a hand-edited settings.json (or a scene) becomes empty instead of crashing later.
+        set => _perKeyColors = value ?? [];
+    }
+
+    private Dictionary<int, RgbColor> _perKeyColors = [];
 
     // Ambient light
     public int AmbientMonitor { get; set; } = 0;
@@ -539,7 +546,7 @@ public sealed class AppSettings
     public List<Scene> Scenes { get; set; } = Scene.Defaults();
 }
 
-public sealed class SettingsStore
+public sealed class SettingsStore : IDisposable
 {
     public static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -556,6 +563,9 @@ public sealed class SettingsStore
     private readonly string _path;
     private readonly object _sync = new();
     private Timer? _debounce;
+    private volatile bool _disposed;
+    private int _retries;
+    private const int MaxRetries = 5;
 
     public SettingsStore(string? directory = null)
     {
@@ -593,28 +603,76 @@ public sealed class SettingsStore
     /// </summary>
     public event Action? SaveRequested;
 
-    /// <summary>Saves after a short delay so rapid slider changes do not hammer the disk.</summary>
+    /// <summary>Saves after a short delay so rapid slider changes do not hammer the disk. Does nothing after <see cref="Dispose"/>.</summary>
     public void SaveSoon()
     {
+        if (_disposed) return;
         try { SaveRequested?.Invoke(); } catch (Exception ex) { Log.Warn("SaveRequested handler: " + ex.Message); }
+        Schedule(800);
+    }
+
+    private void Schedule(int delayMs)
+    {
         lock (_sync)
         {
+            if (_disposed) return;
             _debounce?.Dispose();
-            _debounce = new Timer(_ => SaveNow(), null, 800, Timeout.Infinite);
+            _debounce = new Timer(_ => SaveFromTimer(), null, delayMs, Timeout.Infinite);
         }
     }
 
-    public void SaveNow()
+    private void SaveFromTimer()
     {
         lock (_sync)
         {
+            if (_disposed) return;
+            SaveNow();
+        }
+    }
+
+    /// <summary>
+    /// Writes the settings right away (cancels a pending delayed save). Returns false if it failed; a failed save
+    /// (e.g. another thread changed a list while it was serialized) is retried shortly.
+    /// </summary>
+    public bool SaveNow()
+    {
+        lock (_sync)
+        {
+            _debounce?.Dispose();
+            _debounce = null;
             try
             {
+                var json = JsonSerializer.Serialize(Current, JsonOptions);
                 var tmp = _path + ".tmp";
-                File.WriteAllText(tmp, JsonSerializer.Serialize(Current, JsonOptions));
+                File.WriteAllText(tmp, json);
                 File.Move(tmp, _path, true);
+                _retries = 0;
+                return true;
             }
-            catch { /* ignore – next save will retry */ }
+            catch (Exception ex)
+            {
+                Log.Warn($"Saving settings failed: {ex.Message}");
+                if (!_disposed && _retries < MaxRetries)
+                {
+                    _retries++;
+                    _debounce = new Timer(_ => SaveFromTimer(), null, 500, Timeout.Infinite);
+                }
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Stops delayed saves without writing (an explicit <see cref="SaveNow"/> still works). Used when the
+    /// settings are reloaded from disk: the old in-memory state must not overwrite the file afterwards.
+    /// </summary>
+    public void Dispose()
+    {
+        lock (_sync)
+        {
+            _disposed = true;
+            _debounce?.Dispose();
+            _debounce = null;
         }
     }
 }

@@ -17,6 +17,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
     private Border? _preview;
     private System.Windows.Media.Effects.DropShadowEffect? _glow;
     private DispatcherTimer? _timer;
+    private bool _syncingTile;
 
     public static string EffectName(LightingEffectKind e) => e switch
     {
@@ -110,6 +111,7 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
                 var (icon, desc) = EffectInfo(e);
                 var tile = Ui.Tile(icon, EffectName(e), desc, Kb.Effect == e, "effect", () =>
                 {
+                    if (_syncingTile) return; // only the tile's look follows a change applied elsewhere
                     Kb.Effect = effect;
                     Kb.Enabled = true;
                     Cc.ApplyKeyboard();
@@ -268,16 +270,36 @@ public sealed class LightingPage(ControlCenter cc) : AppPage(cc)
 
         void Changed()
         {
+            // Always the current settings: a scene may have replaced Settings.Keyboard while the page was open.
             keyboard.SetColors(Kb.PerKeyColors);
-            // Painting switches to the "per key" effect (the tile's Checked handler applies it).
-            if (Kb.Effect != LightingEffectKind.PerKey && _tiles.TryGetValue(LightingEffectKind.PerKey, out var tile)) tile.IsChecked = true;
-            else Cc.ApplyKeyboard();
+            // Painting switches to the "per key" effect – set here directly, a tile that is already checked
+            // (but out of date) would not raise Checked.
+            var switched = Kb.Effect != LightingEffectKind.PerKey;
+            if (switched)
+            {
+                Kb.Effect = LightingEffectKind.PerKey;
+                Kb.Enabled = true;
+            }
+            Cc.ApplyKeyboard(); // applies and saves
+            if (!switched) return;
+            if (_tiles.TryGetValue(LightingEffectKind.PerKey, out var tile))
+            {
+                _syncingTile = true;
+                try { tile.IsChecked = true; } finally { _syncingTile = false; }
+            }
+            _options!.Content = BuildOptions();
+            _color!.Content = BuildColorCard();
         }
 
         keyboard.Painted += (id, erase) =>
         {
-            if (erase ? !Kb.PerKeyColors.Remove(id) : Kb.PerKeyColors.TryGetValue(id, out var old) && old == Kb.Color) return;
-            if (!erase) Kb.PerKeyColors[id] = Kb.Color;
+            var colors = Kb.PerKeyColors;
+            if (erase ? !colors.Remove(id) : colors.TryGetValue(id, out var old) && old == Kb.Color)
+            {
+                keyboard.SetColors(colors); // nothing changed, but show the current colors
+                return;
+            }
+            if (!erase) colors[id] = Kb.Color;
             Changed();
         };
         s.Children.Add(Ui.Wrap(

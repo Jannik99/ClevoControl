@@ -326,7 +326,15 @@ public partial class App : Application
 
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
     {
-        _cc?.Dispose();
         base.OnSessionEnding(e);
+        if (e.Cancel || _cc is null) return;
+        // Not Dispose: another app can still cancel the logoff, and ClevoControl would keep running
+        // without lighting, sensors or fan control. Save and hand the fans to the firmware instead.
+        _cc.Store.SaveNow();
+        _cc.Fans.Suspend();
+        // Still running after a while: the logoff was cancelled, so take the fans back.
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        timer.Tick += (_, _) => { timer.Stop(); if (!IsExiting) _cc?.Fans.Resume(); };
+        timer.Start();
     }
 }

@@ -24,6 +24,8 @@ public sealed class MainWindow : Window
     private readonly Border _keyboardDot;
     private readonly Material.Icons.Avalonia.MaterialIcon _keyboardIcon = new() { Kind = Icons.Kind(Icons.Keyboard)!.Value, Width = 22, Height = 22 };
     private AppPage? _current;
+    /// <summary>The page was left when hiding to the tray (timers and events stopped): rebuild it on the next activation.</summary>
+    private bool _pageLeft;
 
     public MainWindow(ControlCenter cc)
     {
@@ -115,7 +117,13 @@ public sealed class MainWindow : Window
 
         cc.Lighting.ColorChanged += c => Dispatcher.UIThread.Post(() =>
             SetKeyboardDot(cc.Lighting.KeyboardIsOn ? c : new RgbColor(40, 40, 40)));
-        Activated += (_, _) => _current?.OnShow();
+        Activated += (_, _) =>
+        {
+            if (OperatingSystem.IsWindows()) Core.Platform.KeyboardLayout.Refresh(); // the user may have switched layouts
+            // Hidden to the tray: the page stopped its timers and events, so rebuild it.
+            if (_pageLeft && _current?.Key is { } key) { _pageLeft = false; Navigate(key); }
+            else _current?.OnShow();
+        };
         Navigate("dashboard");
     }
 
@@ -222,6 +230,7 @@ public sealed class MainWindow : Window
                 return;
             }
             _current?.OnLeave();
+            _pageLeft = true;
             Hide();
             App.Current.ShowTrayHint();
             return;

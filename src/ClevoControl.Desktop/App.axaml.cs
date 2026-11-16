@@ -14,7 +14,8 @@ namespace ClevoControl.Desktop;
 
 public partial class App : Application
 {
-    private const string PipeName = "ClevoControl.Desktop.Show";
+    // Per user: on Linux the pipe is a socket in /tmp that all users share.
+    private static readonly string PipeName = "ClevoControl.Desktop.Show." + Environment.UserName;
 
     public static string[] Args { get; set; } = [];
     public static bool IsExiting { get; private set; }
@@ -48,7 +49,11 @@ public partial class App : Application
         }
 
         var screenshotFolder = ArgValue("--screenshots");
-        _mutex = new Mutex(true, screenshotFolder is null ? "ClevoControl.Desktop" : "ClevoControl.Desktop.Shots." + (uint)Path.GetFullPath(screenshotFolder).GetHashCode(), out var first);
+        // On Unix a mutex without "Global\" only covers one login session (setsid): XDG autostart, the app
+        // launcher and a terminal can each be another one, so two instances would drive the hardware.
+        var mutexName = screenshotFolder is null ? "ClevoControl.Desktop" : "ClevoControl.Desktop.Shots." + (uint)Path.GetFullPath(screenshotFolder).GetHashCode();
+        if (!OperatingSystem.IsWindows()) mutexName = @"Global\" + mutexName + "." + Environment.UserName;
+        _mutex = new Mutex(true, mutexName, out var first);
         if (!first)
         {
             // Another instance runs: ask it to show its window, then quit.
@@ -66,12 +71,14 @@ public partial class App : Application
         var store = new SettingsStore();
         Loc.Init(store.Current.General.Language);
         var simulate = Args.Contains("--simulate") || screenshotFolder is not null;
-        StopBackgroundService();
+        if (!simulate) StopBackgroundService();
         var hw = HardwareFactory.Create(simulate);
         Log.Info($"Start ClevoControl (desktop) {typeof(App).Assembly.GetName().Version} – {hw.Description}, keyboard {hw.KeyboardType}");
         _cc = new ControlCenter(hw, store);
         // Keep the autostart on this exe (a new version elsewhere must not keep starting an old one).
         if (!simulate) Task.Run(() => ClevoControl.Core.Services.Autostart.EnsureCurrent(Environment.ProcessPath));
+        // Linux layout detection runs gsettings/setxkbmap/localectl (up to seconds): not on the UI thread.
+        if (!OperatingSystem.IsWindows()) _ = Task.Run(() => Core.Platform.KeyboardLayout.Current);
         _cc.AutoProfiles.Invoke = a => Dispatcher.UIThread.Post(a);
         _cc.HotkeyHandled += msg => Notify("ClevoControl", msg);
         // Hotkeys switch on/off live (Linux: evdev reader in ControlCenter). Say so when key presses cannot be read.
@@ -143,7 +150,19 @@ public partial class App : Application
         {
             Log.Info("Stopping the clevocontrol background service while the app runs");
             Core.Platform.Shell.Run("systemctl", "--user", "stop", "clevocontrol.service");
+            _serviceStopped = true;
         }
+    }
+
+    private static bool _serviceStopped;
+
+    /// <summary>Starts the background service again if the app stopped it (after the app has let go of the hardware).</summary>
+    private static void RestartBackgroundService()
+    {
+        if (!_serviceStopped) return;
+        _serviceStopped = false;
+        Log.Info("Starting the clevocontrol background service again");
+        Core.Platform.Shell.Run("systemctl", "--user", "start", "--no-block", "clevocontrol.service");
     }
 
     private void ListenForShowRequests()
@@ -173,7 +192,9 @@ public partial class App : Application
         const int sigUsr1 = 10, sigUsr2 = 12;
         _signals.Add(PosixSignalRegistration.Create((PosixSignal)sigUsr1, c => { c.Cancel = true; _cc?.OnSuspend(); }));
         _signals.Add(PosixSignalRegistration.Create((PosixSignal)sigUsr2, c => { c.Cancel = true; _cc?.OnResume(); }));
-        _signals.Add(PosixSignalRegistration.Create(PosixSignal.SIGTERM, c => { c.Cancel = true; Dispatcher.UIThread.Post(ExitApp); }));
+        // Ctrl+C, a closed terminal and SIGQUIT must also hand the fans back (ControlCenter.Dispose).
+        foreach (var signal in new[] { PosixSignal.SIGTERM, PosixSignal.SIGINT, PosixSignal.SIGHUP, PosixSignal.SIGQUIT })
+            _signals.Add(PosixSignalRegistration.Create(signal, c => { c.Cancel = true; Dispatcher.UIThread.Post(ExitApp); }));
     }
 
     /// <summary>Desktop notification (Linux: notify-send). Quietly does nothing where unavailable.</summary>
@@ -345,6 +366,7 @@ public partial class App : Application
         foreach (var s in _signals) s.Dispose();
         if (_tray is not null) { _tray.IsVisible = false; _tray.Dispose(); }
         _cc?.Dispose();
+        RestartBackgroundService();
         try { _mutex?.ReleaseMutex(); } catch { }
     }
 }

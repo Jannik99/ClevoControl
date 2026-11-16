@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using ClevoControl.Core;
 using ClevoControl.Core.Services;
 using ClevoControl.Core.Settings;
@@ -44,8 +45,14 @@ public sealed class PowerPage(ControlCenter cc) : AppPage(cc)
         root.Children.Add(ProfileCard());
         root.Children.Add(ThrottleCard());
         root.Children.Add(AutoSwitchCard());
+        // The AC/battery switch changes the profile in the background: keep the tiles in step.
+        Cc.StatusChanged += OnStatusChanged;
         return root;
     }
+
+    public override void OnLeave() => Cc.StatusChanged -= OnStatusChanged;
+
+    private void OnStatusChanged() => Dispatcher.UIThread.Post(SyncTiles);
 
     /// <summary>Selects the tiles that match the current profile and OS power mode, without running their actions.</summary>
     private void SyncTiles()
@@ -157,7 +164,7 @@ public sealed class PowerPage(ControlCenter cc) : AppPage(cc)
                      (CoolingMode.Normal, Icons.Auto, Loc.T("Normal", "Normal"), Loc.T("Turbo an, volle Leistung", "Turbo on, full power")),
                      (CoolingMode.Cool, Icons.Thermometer, Loc.T("Kühl", "Cool"), Loc.T("Kein Turbo · meist 10–20 °C kühler, etwas weniger FPS", "No turbo · usually 10–20 °C cooler, slightly lower FPS")),
                      (CoolingMode.VeryCool, Icons.Moon, Loc.T("Sehr kühl", "Very cool"), Loc.T("Max. 80 % Takt · deutlich weniger Leistung", "Max. 80 % clock · noticeably less performance")),
-                 })
+                 }.Where(t => t.Item1 != CoolingMode.VeryCool || CoolingService.CanLimitCpu || current == CoolingMode.VeryCool))
         {
             var m = mode;
             tiles.Children.Add(Ui.Tile(icon, title, desc, current == mode, "throttle", () =>

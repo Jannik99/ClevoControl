@@ -88,16 +88,29 @@ public abstract class PerKeyKeyboardBase : IPerKeyKeyboard
         if (!any || !On) return;
         var force = _force;
         _force = true; // stays set if the write throws, so the next attempt sends everything
+        ActiveHardwareEffect = null; // writing the frame switches the controller back to per-key mode
         WriteFrame(frame, changed, force);
         _force = false;
         _sent = (RgbColor[])frame.Clone();
     }
 
+    /// <summary>
+    /// The controller's built-in effect while it runs (set by <see cref="SetHardwareEffect"/>, cleared as soon as a
+    /// per-key frame is written). Transports use it to change the brightness without leaving the effect.
+    /// </summary>
+    protected (HardwareEffect Effect, RgbColor Color)? ActiveHardwareEffect { get; private set; }
+
+    // True until the current Brightness reached the controller (also after a failed write, so it is retried).
+    private bool _brightnessPending = true;
+
     public void SetBrightness(byte level)
     {
-        if (level == Brightness && !_force) return;
-        Brightness = level;
-        if (On) WriteBrightness(level);
+        if (level == Brightness && !_force && !_brightnessPending) return;
+        Brightness = level; // the transports read it while writing
+        _brightnessPending = true;
+        if (!On) return; // SetPower(true) sends it
+        WriteBrightness(level);
+        _brightnessPending = false;
     }
 
     public void SetPower(bool on)
@@ -105,20 +118,24 @@ public abstract class PerKeyKeyboardBase : IPerKeyKeyboard
         On = on;
         if (on)
         {
+            _brightnessPending = true;
             WriteBrightness(Brightness);
+            _brightnessPending = false;
             _force = true;
             Apply(Frame);
         }
         else
         {
+            ActiveHardwareEffect = null; // switching off ends a running effect
             WriteOff();
         }
     }
 
     public void SetHardwareEffect(HardwareEffect effect, RgbColor color)
     {
-        WriteHardwareEffect(effect, color);
         _force = true; // per-key mode must be entered again before the next frame
+        WriteHardwareEffect(effect, color);
+        ActiveHardwareEffect = (effect, color);
     }
 
     public void Invalidate() => _force = true;
@@ -140,11 +157,43 @@ public sealed class SimulatedPerKey() : PerKeyKeyboardBase(PerKeyController.Ite8
 
     public int Writes { get; private set; }
 
-    protected override void WriteFrame(RgbColor[] frame, bool[] changed, bool all) => Writes++;
+    /// <summary>Brightness levels that reached the (simulated) controller, in order.</summary>
+    public List<byte> BrightnessWrites { get; } = [];
 
-    protected override void WriteBrightness(byte level) { }
+    /// <summary>Number of times the built-in effect was (re)started, including brightness changes while it runs.</summary>
+    public int EffectWrites { get; private set; }
 
-    protected override void WriteOff() { }
+    /// <summary>Test hook: the next write throws like a failing USB transfer.</summary>
+    public bool FailNextWrite { get; set; }
 
-    protected override void WriteHardwareEffect(HardwareEffect effect, RgbColor color) { }
+    public bool HardwareEffectRunning => ActiveHardwareEffect is not null;
+
+    private void MaybeFail()
+    {
+        if (!FailNextWrite) return;
+        FailNextWrite = false;
+        throw new IOException("Simulated HID write failure");
+    }
+
+    protected override void WriteFrame(RgbColor[] frame, bool[] changed, bool all)
+    {
+        MaybeFail();
+        Writes++;
+    }
+
+    protected override void WriteBrightness(byte level)
+    {
+        MaybeFail();
+        // Like the ITE 8291: the brightness is part of the effect command while an effect runs.
+        if (ActiveHardwareEffect is not null) EffectWrites++;
+        BrightnessWrites.Add(level);
+    }
+
+    protected override void WriteOff() => MaybeFail();
+
+    protected override void WriteHardwareEffect(HardwareEffect effect, RgbColor color)
+    {
+        MaybeFail();
+        EffectWrites++;
+    }
 }

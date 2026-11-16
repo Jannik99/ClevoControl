@@ -18,12 +18,38 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+# Runs "systemctl --user ..." for the user who called sudo (needs their running session bus).
+user_systemctl() {
+  [ -n "$user" ] && [ "$user" != root ] || return 0
+  uid=$(id -u "$user" 2>/dev/null) || return 0
+  [ -S "/run/user/$uid/bus" ] || return 0
+  if command -v runuser >/dev/null 2>&1; then
+    runuser -u "$user" -- env XDG_RUNTIME_DIR="/run/user/$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
+      systemctl --user "$@" >/dev/null 2>&1 || true
+  else
+    sudo -u "$user" env XDG_RUNTIME_DIR="/run/user/$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
+      systemctl --user "$@" >/dev/null 2>&1 || true
+  fi
+}
+
 if [ "${1:-}" = "--uninstall" ]; then
+  # Stop and disable the user service before its unit file goes away.
+  user_systemctl disable --now clevocontrol.service
+  # "systemctl --user enable" links the unit into each user's default.target.wants: remove links left behind
+  # (other users, or no running session for the invoking user).
+  home=""
+  [ -n "$user" ] && home=$(getent passwd "$user" | cut -d: -f6)
+  for link in ${home:+"$home/.config/systemd/user/default.target.wants/clevocontrol.service"} \
+              /home/*/.config/systemd/user/default.target.wants/clevocontrol.service \
+              /root/.config/systemd/user/default.target.wants/clevocontrol.service; do
+    if [ -L "$link" ]; then rm -f "$link"; fi
+  done
   rm -f /usr/local/bin/clevoctl /usr/local/bin/clevocontrol \
         /etc/udev/rules.d/99-clevocontrol.rules /etc/tmpfiles.d/clevocontrol.conf \
         /usr/lib/systemd/system-sleep/clevocontrol /usr/lib/systemd/user/clevocontrol.service \
         /usr/share/applications/clevocontrol.desktop /usr/share/icons/hicolor/256x256/apps/clevocontrol.png
   udevadm control --reload-rules || true
+  user_systemctl daemon-reload
   echo "Removed. Settings stay in ~/.config/ClevoControl; the group 'clevocontrol' was kept."
   exit 0
 fi
@@ -53,7 +79,10 @@ getent group clevocontrol >/dev/null || groupadd --system clevocontrol
 install -m 0644 "$here/99-clevocontrol.rules" /etc/udev/rules.d/99-clevocontrol.rules
 install -m 0644 "$here/clevocontrol-tmpfiles.conf" /etc/tmpfiles.d/clevocontrol.conf
 install -D -m 0755 "$here/clevocontrol-sleep" /usr/lib/systemd/system-sleep/clevocontrol
-install -D -m 0644 "$here/clevocontrol.service" /usr/lib/systemd/user/clevocontrol.service
+# The user service runs "clevoctl daemon": only useful when clevoctl is installed.
+if [ -n "$ctl" ]; then
+  install -D -m 0644 "$here/clevocontrol.service" /usr/lib/systemd/user/clevocontrol.service
+fi
 if [ -n "$gui" ]; then
   install -D -m 0644 "$here/clevocontrol.desktop" /usr/share/applications/clevocontrol.desktop
   install -D -m 0644 "$here/clevocontrol.png" /usr/share/icons/hicolor/256x256/apps/clevocontrol.png
@@ -75,11 +104,12 @@ if [ -n "$user" ] && [ "$user" != root ]; then
   echo "Log out and back in for the group membership to take effect."
 fi
 
-cat <<MSG
-
-Installed. Next steps (as your normal user, after logging in again):
-  clevoctl status        # check that the hardware is detected
-  clevocontrol           # start the app (also in your application menu)
-Without the desktop app, the background service runs lighting, fan curve and profiles:
-  systemctl --user enable --now clevocontrol
-MSG
+echo
+echo "Installed. Next steps (as your normal user, after logging in again):"
+[ -n "$ctl" ] && echo "  clevoctl status        # check that the hardware is detected"
+[ -n "$gui" ] && echo "  clevocontrol           # start the app (also in your application menu)"
+if [ -n "$ctl" ]; then
+  echo "Without the desktop app, the background service runs lighting, fan curve and profiles:"
+  echo "  systemctl --user enable --now clevocontrol"
+fi
+exit 0
